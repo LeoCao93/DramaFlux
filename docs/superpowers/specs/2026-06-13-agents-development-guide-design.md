@@ -24,7 +24,7 @@ The guide will cover:
    opt-in live tests.
 5. Security rules for session data, service tokens, signed request material,
    loopback binding, header allowlists, and Frida binaries.
-6. Documentation and change-management expectations for Codex.
+6. Communication, documentation, and change-management expectations for Codex.
 
 ## Key Rules
 
@@ -37,6 +37,9 @@ The guide will cover:
   request material, local binaries, or `.local` runtime state.
 - Prefer deterministic unit and integration tests. Live tests remain disabled
   unless `HONGGUO_RUN_LIVE_TESTS=1` is explicitly set.
+- Use Simplified Chinese for user communication, progress updates, questions,
+  and final responses. Keep code identifiers, commands, paths, protocol fields,
+  and established technical terms in their original form.
 - Keep changes scoped, follow existing patterns, and update tests and
   documentation when behavior or interfaces change.
 
