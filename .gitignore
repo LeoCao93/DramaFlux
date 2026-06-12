@@ -55,3 +55,4 @@ Desktop.ini
 # Local analysis/tooling output
 .codegraph/
 repo-analysis/
+.superpowers/
