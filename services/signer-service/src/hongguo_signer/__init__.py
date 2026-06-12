@@ -1,0 +1,1 @@
+"""Hongguo signer service."""

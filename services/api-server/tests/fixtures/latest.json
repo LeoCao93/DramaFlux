@@ -1,0 +1,28 @@
+{
+  "data": {
+    "has_more": false,
+    "video_data": [
+      {
+        "series_id": "100",
+        "title": "今日短剧",
+        "episode_cnt": 12,
+        "sub_title_list": [
+          {
+            "content": "今日上新"
+          }
+        ],
+        "category_schema": "[{\"name\":\"都市\"}]"
+      },
+      {
+        "series_id": "101",
+        "title": "旧短剧",
+        "episode_cnt": "bad",
+        "sub_title_list": "bad",
+        "category_schema": "{bad-json"
+      },
+      {
+        "title": "missing id"
+      }
+    ]
+  }
+}

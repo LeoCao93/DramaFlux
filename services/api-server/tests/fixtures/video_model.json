@@ -1,0 +1,7 @@
+{
+  "data": {
+    "101": {
+      "video_model": "{\"video_list\":[{\"video_id\":\"v-low\",\"main_url\":\"https://video.test/720\",\"backup_url\":\"https://backup.test/720\",\"video_meta\":{\"definition\":\"720p\",\"height\":720,\"bitrate\":800,\"size\":100}},{\"video_id\":\"v-high\",\"main_url\":\"https://video.test/1080\",\"video_meta\":{\"definition\":\"1080p\",\"height\":1080,\"bitrate\":1500,\"size\":200},\"encrypt_info\":{\"encrypt\":false}},{\"video_id\":\"v-invalid\",\"main_url\":\"javascript:alert(1)\",\"video_meta\":{\"definition\":\"2160p\",\"height\":2160,\"bitrate\":9000}}]}"
+    }
+  }
+}

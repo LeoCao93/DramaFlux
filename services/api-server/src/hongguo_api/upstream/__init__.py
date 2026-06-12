@@ -1,0 +1,1 @@
+"""Signed Hongguo upstream transport."""

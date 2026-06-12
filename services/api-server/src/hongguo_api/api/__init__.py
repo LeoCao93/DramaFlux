@@ -1,0 +1,1 @@
+"""Local Hongguo HTTP API."""

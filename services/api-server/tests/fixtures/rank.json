@@ -1,0 +1,30 @@
+{
+  "data": {
+    "cell_view": {
+      "has_more": false,
+      "cell_data": [
+        {
+          "video_data": [
+            {
+              "series_id": "100",
+              "vid": "101",
+              "title": "榜单短剧",
+              "episode_cnt": 20,
+              "play_cnt": 300
+            },
+            {
+              "series_id": "102",
+              "title": "容错短剧",
+              "episode_cnt": "unknown",
+              "play_cnt": null
+            }
+          ]
+        },
+        {
+          "video_data": "not-a-list"
+        },
+        "not-an-object"
+      ]
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "data": {
+    "100": {
+      "video_data": {
+        "series_title": "详情短剧",
+        "series_intro": "脱敏测试简介",
+        "series_cover": "https://image.test/series.jpg",
+        "episode_cnt": 3,
+        "video_list": [
+          {
+            "vid": "102",
+            "vid_index": 2,
+            "title": "第2集",
+            "duration": 61,
+            "episode_cover": "https://image.test/episode-2.jpg"
+          },
+          {
+            "vid": "101",
+            "vid_index": 1,
+            "title": "第1集",
+            "duration": 60
+          },
+          {
+            "vid": "bad",
+            "vid_index": "not-an-index",
+            "title": "损坏条目"
+          },
+          {
+            "vid_index": 3,
+            "title": "缺少视频 ID"
+          }
+        ]
+      }
+    }
+  }
+}

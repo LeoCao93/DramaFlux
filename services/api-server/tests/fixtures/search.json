@@ -1,0 +1,33 @@
+{
+  "search_tabs": [
+    {
+      "next_offset": 20,
+      "passback": "pass",
+      "search_id": "search",
+      "has_more": true,
+      "data": [
+        {
+          "book_id": "100",
+          "video_detail": {
+            "episode_cnt": 10,
+            "series_title": "测试短剧"
+          },
+          "video_data": {
+            "cover": "https://img.test/1",
+            "copyright": "测试版权"
+          }
+        },
+        {
+          "book_id": "broken",
+          "video_detail": "not-an-object",
+          "video_data": []
+        },
+        {
+          "video_detail": {
+            "series_title": "missing id"
+          }
+        }
+      ]
+    }
+  ]
+}

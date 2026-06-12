@@ -1,0 +1,57 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Virtual environments and uv caches
+.venv/
+.uv-cache/
+
+# Build and packaging output
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Local runtime state and secrets
+.local/
+*.log
+*.pid
+.env
+.env.*
+!.env.example
+services/**/.env
+services/**/.env.*
+!services/**/.env.example
+
+# Captured Hongguo credentials and sessions
+session.json
+**/session.json
+
+# Frida server binaries and archives
+services/signer-service/bin/*
+!services/signer-service/bin/.gitkeep
+frida-server-*
+*.xz
+
+# Editors and operating-system files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local analysis/tooling output
+.codegraph/
+repo-analysis/
