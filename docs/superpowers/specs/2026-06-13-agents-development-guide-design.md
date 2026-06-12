@@ -25,6 +25,7 @@ The guide will cover:
 5. Security rules for session data, service tokens, signed request material,
    loopback binding, header allowlists, and Frida binaries.
 6. Communication, documentation, and change-management expectations for Codex.
+7. Git repository checks, worktree protection, and commit-message conventions.
 
 ## Key Rules
 
@@ -42,6 +43,15 @@ The guide will cover:
   and established technical terms in their original form.
 - Keep changes scoped, follow existing patterns, and update tests and
   documentation when behavior or interfaces change.
+- Before Git operations, confirm the current directory belongs to a repository.
+  Never claim a commit or push succeeded when no repository exists or the
+  command failed.
+- Inspect `git status` before committing. Separate agent changes from existing
+  user changes, stage only intended files, and never discard unrelated work
+  without explicit authorization.
+- Write concise Chinese commit subjects using an appropriate conventional
+  prefix: `feat`, `fix`, `style`, `docs`, or `refactor`. Use `test`, `chore`,
+  or another established prefix when it describes the change more accurately.
 
 ## Verification
 
