@@ -26,6 +26,7 @@
 - PowerShell 5.1 或更高版本
 - Python 3.10+
 - [uv](https://docs.astral.sh/uv/)
+- Node.js 20.17+ 和 npm 11+，仅在执行前端 dev server 或构建 API 托管页时需要
 - MuMu 模拟器 12，目标实例已启用 root
 - 目标 App 已安装、已登录，并能正常打开搜索、榜单或详情页面
 - Python `frida` 与 Android `frida-server` 版本完全一致
@@ -100,7 +101,7 @@ services/signer-service/bin/frida-server-16.7.19-android-x86_64
 services/signer-service/.env.example
 ```
 
-在启动 Signer 的 PowerShell 窗口设置环境变量。下面的本机路径仍然只是示例，请按实际安装位置调整：
+以下命令默认在仓库根目录的 PowerShell 窗口执行。下面的本机路径仍然只是示例，请按实际安装位置调整：
 
 ```powershell
 $env:HONGGUO_SIGNER_MUMU_HOME="D:\MuMu Player 12"
@@ -132,14 +133,14 @@ services/api-server/.env.example
 ```powershell
 $env:HONGGUO_API_SIGNER_URL="http://127.0.0.1:18001"
 $env:HONGGUO_API_SIGNER_TOKEN="与 Signer Service 相同的随机长字符串"
-$env:HONGGUO_API_SESSION_FILE=".local/session.json"
+$env:HONGGUO_API_SESSION_FILE="$PWD\.local\session.json"
 $env:HONGGUO_API_TIMEOUT_SECONDS="30"
 ```
 
 说明：
 
 - `HONGGUO_API_SIGNER_TOKEN` 必须与 `HONGGUO_SIGNER_SERVICE_TOKEN` 一致。
-- `HONGGUO_API_SESSION_FILE` 会保存本地 session 快照，不要提交。
+- `HONGGUO_API_SESSION_FILE` 会保存本地 session 快照，不要提交；这里使用 `$PWD` 是为了明确锚定到仓库根目录。
 
 ## 6. 启动顺序
 
@@ -229,6 +230,11 @@ Invoke-RestMethod http://127.0.0.1:18000/health
 }
 ```
 
+说明：
+
+- `http://127.0.0.1:18000/health` 只代表 API 进程可用，不代表 Signer、session 或业务链路已经完全可用。
+- 若健康检查通过但业务请求失败，优先检查 Signer、session 和上游响应。
+
 如果前端静态资源已构建，API Server 还会托管以下页面：
 
 - `http://127.0.0.1:18000/`
@@ -262,27 +268,34 @@ npm run dev -- --host 127.0.0.1 --port 5173
 http://127.0.0.1:5173
 ```
 
+说明：
+
+- 这一步需要 Node.js 和 npm。
+- 如果只是验证后端部署，可以跳过这一节。
+
 ## 7. 验证 API 与 Web
 
-建议按以下顺序验证：
+这里分两层验证，避免把进程健康误当成端到端可用。
 
-1. Signer 健康检查：`http://127.0.0.1:18001/v1/health`
-2. API 健康检查：`http://127.0.0.1:18000/health`
-3. API 托管页面：`http://127.0.0.1:18000/`
-4. 前端 dev server：`http://127.0.0.1:5173`
+1. 进程健康
+   - Signer 健康检查：`http://127.0.0.1:18001/v1/health`
+   - API 健康检查：`http://127.0.0.1:18000/health`
+   - 若前端静态资源已构建，再检查 API 托管页面：`http://127.0.0.1:18000/`
+   - 若需要前端联调，再检查前端 dev server：`http://127.0.0.1:5173`
 
-可保留少量联调级别的 API 示例，用于确认链路可用：
+2. 端到端可用
+   - 至少成功执行一次业务 API 调用并得到 `code=200`
+   - 对于详情类接口，先用搜索结果拿到实际 `series_id` 或 `video_id` 再调用，不要依赖固定样例 ID
 
 ```powershell
 Invoke-RestMethod "http://127.0.0.1:18000/api/search?q=妈妈&page=1&page_size=30"
-Invoke-RestMethod "http://127.0.0.1:18000/api/books/7647789981687106622"
 ```
 
 如果这里只是验证部署链路，不需要把所有业务接口逐个调用一遍；更完整的接口说明请看 `services/api-server/README.md`。
 
 ## 8. 前后端联调
 
-当前前端开发态默认通过 Vite 代理后端接口：
+当前前端开发态默认通过 Vite 代理后端接口，API Server 托管页与 dev server 是两种不同入口：
 
 - `/api` -> `http://127.0.0.1:18000`
 - `/health` -> `http://127.0.0.1:18000`
@@ -294,11 +307,12 @@ Invoke-RestMethod "http://127.0.0.1:18000/api/books/7647789981687106622"
 3. `services/api-server`
 4. `services/api-server/web` 的 `npm run dev`（可选）
 
-常见联调路径：
+联调时一般只需要记住两件事：
 
-- 直接访问前端开发页：`http://127.0.0.1:5173`
-- 直接访问 API 托管页：`http://127.0.0.1:18000/`
-- 通过浏览器或 PowerShell 验证 `/health` 与 `/api/*`
+- 前端开发页：`http://127.0.0.1:5173`
+- API 托管页：`http://127.0.0.1:18000/`
+
+通过浏览器或 PowerShell 验证 `/health` 与 `/api/*` 即可；更细的页面和接口说明分别看 `services/api-server/README.md`。
 
 ## 9. 排障入口
 
