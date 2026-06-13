@@ -1,5 +1,7 @@
 """FastAPI 应用工厂与统一异常映射。"""
 
+from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
@@ -13,8 +15,8 @@ from hongguo_api.errors import (
     UpstreamTimeoutError,
     UpstreamTransportError,
 )
-from hongguo_api.pagination import CursorError
 from hongguo_api.parsers.detail import DetailNotFoundError, DetailParseError
+from hongguo_api.parsers.search import CursorError
 from hongguo_api.parsers.video import (
     EncryptedStreamError,
     VideoModelParseError,
@@ -26,12 +28,18 @@ from hongguo_api.signer.client import (
     SignerTimeoutError,
     SignerTransportError,
 )
+from hongguo_api.web import WEB_DIST, install_web
 
 
-def create_app(service: HongguoService) -> FastAPI:
+def create_app(service: HongguoService, web_dist: Path | None = None) -> FastAPI:
     """创建只依赖 ``HongguoService`` 协议的 FastAPI 应用。"""
 
-    app = FastAPI(title="Hongguo Local API", version="1.0")
+    app = FastAPI(
+        title="DramaFlux API",
+        version="1.0",
+        docs_url="/internal/docs",
+        redoc_url="/redoc",
+    )
     app.include_router(build_router(service))
 
     def install_handler(
@@ -119,4 +127,5 @@ def create_app(service: HongguoService) -> FastAPI:
     for mapping in mappings:
         install_handler(*mapping)
 
+    install_web(app, WEB_DIST if web_dist is None else web_dist)
     return app

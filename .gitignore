@@ -20,6 +20,9 @@ build/
 dist/
 *.egg-info/
 *.egg
+services/api-server/web/node_modules/
+services/api-server/src/hongguo_api/web_dist/*
+!services/api-server/src/hongguo_api/web_dist/.gitkeep
 
 # Local runtime state and secrets
 .local/
