@@ -1,106 +1,94 @@
 # DramaFlux API Server
 
-`services/api-server` 是 DramaFlux 开放平台的业务服务层。
+`services/api-server` 是 DramaFlux 的业务服务层，负责把本地 session、Signer Service 和上游内容接口串成稳定的 HTTP API，同时托管开放平台 Web 页面。
 
-它负责：
+## 它负责什么
 
-- 提供稳定的本地 HTTP API
-- 读取和使用本地会话快照
-- 调用 Signer Service 获取动态签名
-- 请求上游短剧平台并解析返回结果
-- 托管开放平台 Web 页面
+- 对外提供稳定的业务 API
+- 读取本地 session 快照
+- 调用 Signer Service 获取动态签名结果
+- 请求并解析上游内容接口
+- 托管 `services/api-server/web` 构建后的 Web 页面
 
-它不负责：
+## 它不负责什么
 
-- Frida、ADB、MuMu、设备控制
-- 上游签名算法实现
+- 设备控制、ADB、Frida 注入
+- 动态签名算法实现
 - DRM / CENC 解密
+- 搜索、详情、排行等业务解析以外的设备侧逻辑
 
-这些能力由 `services/signer-service` 独立承担。
+这些能力分别由 `services/signer-service` 和上游服务承担。
 
-## 目录
-
-- [能力范围](#能力范围)
-- [服务结构](#服务结构)
-- [开放平台 Web](#开放平台-web)
-- [HTTP API](#http-api)
-- [环境变量](#环境变量)
-- [本地启动](#本地启动)
-- [前端开发](#前端开发)
-- [测试与校验](#测试与校验)
-- [当前限制](#当前限制)
-
-## 能力范围
-
-当前 API Server 提供以下业务能力：
-
-- 搜索短剧
-- 获取最新短剧
-- 获取排行榜
-- 获取短剧详情
-- 获取短剧剧集列表
-- 解析视频播放地址
-- 统一成功/失败响应格式
-- 基于 TTL 的只读缓存
-- 开放平台首页、接口文档页、定价页
-
-## 服务结构
-
-```mermaid
-flowchart LR
-    Caller["Client / Browser"] --> API["API Server :18000"]
-    API --> Routes["FastAPI Routes"]
-    Routes --> Service["Hongguo Service"]
-    Service --> Cache["TTL Cache"]
-    Service --> Transport["Signed Transport"]
-    Transport --> Signer["Signer Service :18001"]
-    Transport --> Upstream["Upstream API"]
-    Upstream --> Transport
-    Transport --> Parser["Parsers"]
-    Parser --> Routes
-```
-
-关键约束只有一条：
-
-> 请求 Signer 时看到的最终 URL、Header 和请求体字节，必须与真正发给上游的内容一致。
-
-因此 API Server 会先完成最终请求构造，再获取签名，签名完成后不再修改签名材料。
-
-## 开放平台 Web
-
-API Server 内置了一个 React Web，不需要单独部署前端服务即可由 FastAPI 对外提供页面。
-
-当前页面：
-
-- `/`：开放平台首页
-- `/docs`：接口文档与在线调试
-- `/pricing`：定价购买页
-
-保留的内部文档入口：
-
-- `/internal/docs`
-- `/redoc`
-- `/openapi.json`
-
-前端实现位置：
+## 项目结构与模块说明
 
 ```text
-services/api-server/web
+services/api-server
+├── scripts/
+│   ├── start.ps1            # 启动 API Server
+│   └── capture_session.ps1   # 通过 Signer Service 捕获 session
+├── src/hongguo_api/
+│   ├── main.py              # FastAPI 入口，挂载文档页与路由
+│   ├── bootstrap_app.py     # 组装 session、Signer、上游 client 和缓存
+│   ├── config.py            # pydantic-settings 配置
+│   ├── errors.py            # 错误映射与统一异常
+│   ├── cache.py             # 响应缓存
+│   ├── pagination.py        # 分页参数与分页结果
+│   ├── models.py            # 共享数据模型
+│   ├── api/
+│   │   ├── routes.py        # 业务路由
+│   │   └── schemas.py       # 请求/响应 schema
+│   ├── session/
+│   │   ├── parser.py        # session 文件解析
+│   │   └── storage.py       # session 读写与状态判断
+│   ├── signer/
+│   │   └── client.py        # 调用 Signer Service
+│   ├── upstream/
+│   │   ├── client.py        # 组装上游请求
+│   │   └── transport.py     # 带签名的 HTTP transport
+│   ├── parsers/             # search/latest/rank/detail/video 解析
+│   └── web.py               # 托管前端静态资源与页面路由
+├── web/                     # Vite + React 开放平台前端
+└── tests/                   # 单测、集成测试与 live tests
 ```
 
-构建产物输出到：
+模块之间的职责很简单：
+
+- `bootstrap_app.py` 把配置、session、Signer 和上游 client 串起来
+- `api/routes.py` 只负责参数校验、服务调用和响应包装
+- `parsers/` 专门做上游响应转换，避免路由层变胖
+- `session/` 只处理本地 session 文件，不碰业务解析
+- `web/` 是独立前端，API Server 只负责托管构建产物和页面入口
+
+## 静态架构图
 
 ```text
-services/api-server/src/hongguo_api/web_dist
+浏览器 / 前端
+     │
+     ├── Web dev server (5173)
+     │        │ 代理 /api、/health
+     │        ▼
+     │   API Server (18000)
+     │        ├── /health
+     │        ├── /api/search, /api/latest, /api/rank
+     │        ├── /api/books/{series_id}
+     │        ├── /api/books/{series_id}/episodes
+     │        ├── /api/videos/{video_id}
+     │        ├── session storage (.local/session.json)
+     │        ├── Signer client (18001)
+     │        └── upstream client + parsers + cache
+     │
+     └── 托管静态页面
+              ├── /
+              ├── /docs
+              └── /pricing
+
+API Server ──> Signer Service (18001) ──> 返回签名头 / session snapshot
+API Server ──> 上游内容服务 ──> 解析为统一业务模型
 ```
 
-接口文档页的在线调试直接请求当前同源下的 `/api/*` 与 `/health`，在本地开发模式下由 Vite 代理到 `http://127.0.0.1:18000`。
+## 公开接口
 
-定价页中的购买交互目前仅用于展示，不会创建真实订单，也不会发起真实支付。
-
-## HTTP API
-
-当前公开业务接口：
+当前公开业务接口如下：
 
 ```text
 GET /health
@@ -112,47 +100,54 @@ GET /api/books/{series_id}/episodes
 GET /api/videos/{video_id}?quality=1080p&fast=true
 ```
 
-当前路由实现在 [routes.py](/D:/Codex/hongguo-video/services/api-server/src/hongguo_api/api/routes.py)。
+Health、OpenAPI 与 Web 页面相关入口：
 
-示例：
-
-```powershell
-Invoke-RestMethod "http://127.0.0.1:18000/health"
-Invoke-RestMethod "http://127.0.0.1:18000/api/search?q=都市甜宠&page=1&page_size=30"
-Invoke-RestMethod "http://127.0.0.1:18000/api/books/7647789981687106622"
-Invoke-RestMethod "http://127.0.0.1:18000/api/videos/7647791842397801534?quality=1080p&fast=true"
+```text
+GET /health
+GET /internal/docs
+GET /redoc
+GET /openapi.json
+GET /
+GET /docs
+GET /pricing
 ```
 
-成功响应格式：
+其中 `/internal/docs`、`/redoc`、`/openapi.json` 是服务内部文档入口，`/`、`/docs`、`/pricing` 是托管的 Web 页面。
 
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {},
-  "cached": false,
-  "request_id": "19f9550e-5b77-4131-850d-768ee73f4c95"
-}
+## Web 前端
+
+前端源码位于：
+
+```text
+services/api-server/web
 ```
 
-常见错误码：
+开发态通过 Vite 运行：
 
-| HTTP | code | 含义 |
-| --- | --- | --- |
-| `400` | `invalid_cursor` | 分页游标无效 |
-| `401` | `session_expired` | 上游会话已过期 |
-| `404` | `book_not_found` | 短剧不存在 |
-| `404` | `video_not_found` | 视频不存在 |
-| `422` | `encrypted_stream_unsupported` | 仅存在加密流 |
-| `429` | `risk_controlled` | 上游风控 |
-| `502` | `upstream_invalid_response` | 上游响应异常 |
-| `503` | `session_missing` | 尚未捕获会话 |
-| `503` | `signer_unavailable` | Signer Service 不可用 |
-| `504` | `upstream_timeout` | 上游请求超时 |
+```text
+http://127.0.0.1:5173
+```
 
-## 环境变量
+本地开发时，Vite 会把以下请求代理到 API Server：
 
-参考 [`.env.example`](/D:/Codex/hongguo-video/services/api-server/.env.example)：
+- `/api` -> `http://127.0.0.1:18000`
+- `/health` -> `http://127.0.0.1:18000`
+
+API Server 也会托管构建后的前端资源：
+
+- `http://127.0.0.1:18000/`
+- `http://127.0.0.1:18000/docs`
+- `http://127.0.0.1:18000/pricing`
+
+## 配置
+
+参考文件：
+
+```text
+services/api-server/.env.example
+```
+
+常用环境变量：
 
 ```dotenv
 HONGGUO_API_SIGNER_URL=http://127.0.0.1:18001
@@ -161,138 +156,74 @@ HONGGUO_API_SESSION_FILE=.local/session.json
 HONGGUO_API_TIMEOUT_SECONDS=30
 ```
 
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `HONGGUO_API_SIGNER_URL` | `http://127.0.0.1:18001` | Signer Service 地址 |
-| `HONGGUO_API_SIGNER_TOKEN` | `local-development` | 服务间 Bearer Token |
-| `HONGGUO_API_SESSION_FILE` | `.local/session.json` | 本地会话快照路径 |
-| `HONGGUO_API_TIMEOUT_SECONDS` | `30` | 上游 HTTP 超时秒数 |
+说明：
 
-## 本地启动
+- `HONGGUO_API_SIGNER_URL` 指向 Signer Service
+- `HONGGUO_API_SIGNER_TOKEN` 必须与 Signer Service 使用同一 token
+- `HONGGUO_API_SESSION_FILE` 保存本地 session 快照
+- `HONGGUO_API_TIMEOUT_SECONDS` 控制上游请求超时
 
-### 1. 准备 Signer Service
+## 快速开始
 
-先启动 MuMu、目标 App 和 `services/signer-service`。
-
-健康检查：
+在仓库根目录安装依赖：
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:18001/v1/health
+$env:UV_CACHE_DIR="$PWD\.uv-cache"
+uv sync --all-packages
 ```
 
-### 2. 设置共享 token
+准备共享 token 并启动 Signer Service：
 
 ```powershell
-$env:HONGGUO_API_SIGNER_TOKEN="local-development"
+$env:HONGGUO_SIGNER_SERVICE_TOKEN="<your-token>"
+$env:HONGGUO_API_SIGNER_TOKEN=$env:HONGGUO_SIGNER_SERVICE_TOKEN
+.\services\signer-service\scripts\start.ps1
 ```
 
-API Server 和 Signer Service 必须使用相同 token。
-
-### 3. 捕获会话
-
-脚本：
-
-```text
-services/api-server/scripts/capture_session.ps1
-```
-
-用法：
+捕获一次 session：
 
 ```powershell
-$env:HONGGUO_API_SIGNER_TOKEN="local-development"
+$env:HONGGUO_API_SIGNER_TOKEN="<same-token-as-signer>"
 .\services\api-server\scripts\capture_session.ps1
 ```
 
-捕获成功后会写入：
+`capture_session.ps1` 默认读取 `HONGGUO_API_SIGNER_TOKEN`，也可以显式传 `-Token`；无论哪种方式，都必须与 Signer Service 使用同一 token。
 
-```text
-.local/session.json
-```
-
-会话文件可能包含 cookie、设备标识或 token，不能提交到 Git，也不应写入日志。
-
-### 4. 启动 API Server
-
-脚本：
-
-```text
-services/api-server/scripts/start.ps1
-```
-
-从仓库根目录执行：
+启动 API Server：
 
 ```powershell
-$env:HONGGUO_API_SIGNER_TOKEN="local-development"
 .\services\api-server\scripts\start.ps1
 ```
 
-等价命令：
-
-```powershell
-uv run --project services/api-server uvicorn hongguo_api.bootstrap_app:app --host 127.0.0.1 --port 18000
-```
-
-默认仅监听 `127.0.0.1`，不要直接暴露为匿名公网服务。
-
-## 前端开发
-
-Web 工程使用 React 19、React Router 7、Vite 6、Vitest。
-
-首次安装：
+如果需要前端热更新，再启动 Web dev server：
 
 ```powershell
 Set-Location services/api-server/web
 npm install
+npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
-启动本地前端开发服务器：
+## 验证
+
+最小验证顺序：
+
+1. `http://127.0.0.1:18001/v1/health`
+2. `http://127.0.0.1:18000/health`
+3. `http://127.0.0.1:18000/`
+4. `http://127.0.0.1:5173`
+
+建议再执行一次业务 API 调用确认链路可用：
 
 ```powershell
-npm run dev
+Invoke-RestMethod "http://127.0.0.1:18000/api/search?q=妈妈&page=1&page_size=30"
 ```
 
-默认可访问：
+如果你要验证详情或视频接口，先从搜索结果里拿真实 `series_id` / `video_id`，不要依赖固定样例 ID。
 
-```text
-http://127.0.0.1:5173
-```
-
-Vite 代理配置：
-
-- `/api` -> `http://127.0.0.1:18000`
-- `/health` -> `http://127.0.0.1:18000`
-
-因此前端联调时通常需要同时启动：
-
-1. `services/signer-service`
-2. `services/api-server`
-3. `services/api-server/web` 的 `npm run dev`
-
-构建前端静态资源：
+## 开发验证
 
 ```powershell
-npm run build
-```
-
-类型检查：
-
-```powershell
-npm run typecheck
-```
-
-前端测试：
-
-```powershell
-npm test
-```
-
-## 测试与校验
-
-从仓库根目录执行：
-
-```powershell
-$env:UV_CACHE_DIR="$PWD\\.uv-cache"
-uv sync --all-packages
+$env:UV_CACHE_DIR="$PWD\.uv-cache"
 uv run ruff check services/api-server
 uv run pytest services/api-server/tests -q
 ```
@@ -304,21 +235,22 @@ Set-Location services/api-server/web
 npm test
 npm run typecheck
 npm run build
-Set-Location ../../..
 ```
 
-Live tests 默认跳过。只有在本地环境完整可用时才开启：
+## 代码边界
 
-```powershell
-$env:HONGGUO_RUN_LIVE_TESTS="1"
-$env:HONGGUO_LIVE_SERIES_ID="7647789981687106622"
-uv run pytest services/api-server/tests/live -v
+- API Server 不引入设备控制或 Frida 实现
+- 协议变化先改 `packages/hongguo-contracts`
+- 业务路由、缓存、session 读取、Signer 调用和上游解析都在 `services/api-server` 内完成
+
+## 常见问题
+
+- `session_missing` 或 `session_expired` 时，先重新捕获 session
+- `signer_unavailable` 时，检查 Signer Service、MuMu、Frida 和 token 是否一致
+- `upstream_timeout` 时，检查网络和 `HONGGUO_API_TIMEOUT_SECONDS`
+
+更完整的排障说明见：
+
+```text
+docs/troubleshooting.md
 ```
-
-## 当前限制
-
-- `/health` 当前只表示 API 进程可用，不汇总 Signer 和 session 状态。
-- `cached` 字段还没有完全反映真实缓存命中状态。
-- `latest` / `rank` 的上游分页能力仍有继续收敛空间。
-- 在线调试依赖本地有效 session 与可用的 Signer Service；前端本身不绕过这些依赖。
-- 不支持 DRM / CENC 解密、视频代理或批量下载。
