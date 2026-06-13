@@ -5,10 +5,19 @@
       {
         "series_id": "100",
         "title": "今日短剧",
+        "author": "影黎万像",
+        "publish_time": "2026-06-13 00:16:00",
+        "video_desc": "简介",
+        "record_number": "网微剧备字",
+        "duration": "1小时48分钟",
+        "play_cnt": 1041,
         "episode_cnt": 12,
         "sub_title_list": [
           {
             "content": "今日上新"
+          },
+          {
+            "content": "战神归来"
           }
         ],
         "category_schema": "[{\"name\":\"都市\"}]"

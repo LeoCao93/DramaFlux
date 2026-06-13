@@ -5,8 +5,11 @@
 """
 
 import uuid
+from collections.abc import Mapping
+from typing import Any
 
 from hongguo_api.models import DramaPage
+from hongguo_api.pagination import CursorError, decode_cursor, encode_cursor
 from hongguo_api.parsers.detail import SeriesDetail, parse_detail
 from hongguo_api.parsers.latest import parse_latest
 from hongguo_api.parsers.rank import parse_rank
@@ -69,32 +72,121 @@ class HongguoClient:
     ) -> DramaPage:
         """请求分类落地页，并按需要筛选“今日上新”条目。"""
 
-        # 当前上游分页参数尚未确认，因此暂不消费公开 cursor。
-        del cursor
-        payload = await self.transport.request(
-            "POST",
-            "/reading/distribution/category/landpage/v",
-            body={
-                "filter_ids": "",
-                "req_scene": "default" if genre == "short_play" else genre,
+        state = (
+            decode_cursor(cursor, "latest")
+            if cursor is not None
+            else {
                 "offset": (page - 1) * page_size,
-                "need_selector_panel": False,
-                "limit": page_size,
-                "select_items": {
-                    "category_dim_epoch": [],
-                    "online_time": [] if genre == "short_play" else ["days_7"],
-                    "gender": [],
-                    "category_dim_role": [],
-                    "genre": [genre],
-                    "sort": ["online_time"],
-                    "category_dim_theme": [],
-                },
                 "session_id": "",
-                "req_type": "only_content",
-                "client_req_type": 3,
-            },
+                "filter_ids": [],
+            }
         )
-        return parse_latest(payload, today_only=today_only)
+        offset = self._state_int(state, "offset")
+        session_id = self._state_string(state, "session_id")
+        filter_ids = self._state_string_list(state, "filter_ids")
+        items = []
+        has_more = False
+        today_cluster_seen = False
+
+        for _ in range(20):
+            payload = await self.transport.request(
+                "POST",
+                "/reading/distribution/category/landpage/v",
+                body={
+                    "filter_ids": ",".join(filter_ids),
+                    "req_scene": "default" if genre == "short_play" else genre,
+                    "offset": offset,
+                    "need_selector_panel": False,
+                    "limit": page_size,
+                    "select_items": {
+                        "category_dim_epoch": [],
+                        "online_time": [] if genre == "short_play" else ["days_7"],
+                        "gender": [],
+                        "category_dim_role": [],
+                        "genre": [genre],
+                        "sort": ["online_time"],
+                        "category_dim_theme": [],
+                    },
+                    "session_id": session_id,
+                    "req_type": "only_content",
+                    "client_req_type": 3,
+                },
+            )
+            parsed = parse_latest(payload, today_only=False)
+            page_items = parsed.items
+            filter_ids.extend(item.series_id for item in page_items)
+            selected = (
+                [item for item in page_items if item.is_today]
+                if genre == "short_play" and today_only
+                else page_items
+            )
+            if any(item.is_today for item in page_items):
+                today_cluster_seen = True
+            items.extend(selected)
+
+            data = payload.get("data")
+            data = data if isinstance(data, Mapping) else {}
+            has_more = data.get("has_more") is True
+            raw_next_offset = data.get("next_offset")
+            offset = (
+                raw_next_offset
+                if isinstance(raw_next_offset, int)
+                and not isinstance(raw_next_offset, bool)
+                and raw_next_offset >= 0
+                else offset + len(page_items)
+            )
+            raw_session_id = data.get("session_id")
+            if isinstance(raw_session_id, str):
+                session_id = raw_session_id
+
+            enough = len(items) >= page_size
+            passed_today_cluster = (
+                genre == "short_play"
+                and today_only
+                and today_cluster_seen
+                and not any(item.is_today for item in page_items)
+            )
+            if enough or not has_more or not page_items or passed_today_cluster:
+                break
+
+        next_cursor = None
+        if has_more:
+            next_cursor = encode_cursor(
+                "latest",
+                {
+                    "offset": offset,
+                    "session_id": session_id,
+                    "filter_ids": filter_ids,
+                },
+            )
+        return DramaPage(
+            items=items[:page_size],
+            page=page,
+            page_size=page_size,
+            next_cursor=next_cursor,
+            has_more=next_cursor is not None,
+        )
+
+    @staticmethod
+    def _state_int(state: Mapping[str, Any], key: str) -> int:
+        value = state.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            return value
+        raise CursorError("cursor is invalid")
+
+    @staticmethod
+    def _state_string(state: Mapping[str, Any], key: str) -> str:
+        value = state.get(key)
+        if isinstance(value, str):
+            return value
+        raise CursorError("cursor is invalid")
+
+    @staticmethod
+    def _state_string_list(state: Mapping[str, Any], key: str) -> list[str]:
+        value = state.get(key)
+        if isinstance(value, list) and all(isinstance(item, str) for item in value):
+            return list(value)
+        raise CursorError("cursor is invalid")
 
     async def rank(
         self,

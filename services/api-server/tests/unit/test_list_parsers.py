@@ -105,17 +105,29 @@ def test_latest_parser_uses_official_today_label_and_safe_categories() -> None:
     page = parse_latest(load("latest.json"), today_only=False)
 
     assert [item.series_id for item in page.items] == ["100", "101"]
-    assert page.items[0].is_today is True
-    assert page.items[0].categories == ["都市"]
+    latest = page.items[0]
+    assert latest.author == "影黎万像"
+    assert latest.publish_time == "2026-06-13 00:16:00"
+    assert latest.intro == "简介"
+    assert latest.record_number == "网微剧备字"
+    assert latest.duration == "1小时48分钟"
+    assert latest.play_count == 1041
+    assert latest.subtitles == ["今日上新", "战神归来"]
+    assert latest.type == "战神归来"
+    assert latest.categories == ["都市"]
+    assert latest.is_today is True
     assert page.items[1].is_today is False
     assert page.items[1].categories == []
     assert page.items[1].episode_count == 0
 
 
-def test_latest_today_only_filters_and_malformed_payload_is_empty() -> None:
+def test_latest_parser_normalizes_the_whole_page_regardless_of_today_only() -> None:
     page = parse_latest(load("latest.json"), today_only=True)
 
-    assert [item.series_id for item in page.items] == ["100"]
+    assert [item.series_id for item in page.items] == ["100", "101"]
+
+
+def test_latest_parser_handles_malformed_payload_as_empty() -> None:
     assert parse_latest({"data": []}, today_only=False).items == []
 
 
