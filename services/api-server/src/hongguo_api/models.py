@@ -18,6 +18,15 @@ class DramaItem(BaseModel):
     copyright: str = ""
     categories: list[str] = Field(default_factory=list)
     is_today: bool = False
+    author: str = ""
+    type: str = ""
+    duration: str = ""
+    publish_time: str = ""
+    intro: str = ""
+    record_number: str = ""
+    subtitles: list[str] = Field(default_factory=list)
+    rank: int | None = Field(default=None, ge=1)
+    score: float | None = None
 
 
 class DramaPage(BaseModel):
@@ -28,3 +37,6 @@ class DramaPage(BaseModel):
     items: list[DramaItem] = Field(default_factory=list)
     next_cursor: str | None = None
     has_more: bool = False
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=30, ge=1, le=100)
+    total: int | None = Field(default=None, ge=0)

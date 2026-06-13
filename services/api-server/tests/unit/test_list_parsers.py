@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from hongguo_api.models import DramaItem, DramaPage
 from hongguo_api.parsers.latest import parse_latest
 from hongguo_api.parsers.rank import parse_rank
 from hongguo_api.parsers.search import (
@@ -20,6 +21,27 @@ FIXTURES = Path(__file__).parents[1] / "fixtures"
 
 def load(name: str) -> dict[str, Any]:
     return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+
+
+def test_drama_models_expose_stable_additive_defaults() -> None:
+    item = DramaItem(series_id="1", title="title")
+
+    assert item.author == ""
+    assert item.type == ""
+    assert item.categories == []
+    assert item.duration == ""
+    assert item.publish_time == ""
+    assert item.intro == ""
+    assert item.record_number == ""
+    assert item.subtitles == []
+    assert item.rank is None
+    assert item.score is None
+
+    page = DramaPage(page=2, page_size=30)
+
+    assert page.page == 2
+    assert page.page_size == 30
+    assert page.total is None
 
 
 def test_search_parser_preserves_cursor_state_and_skips_malformed_cells() -> None:
