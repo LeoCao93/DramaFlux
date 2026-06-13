@@ -9,7 +9,7 @@
 ![uv](https://img.shields.io/badge/uv-workflow-DE5FE9)
 
 > [!TIP]
-> `README.md` 只负责项目门面、快速开始和架构概览。完整部署、环境准备、启动顺序与故障排查请看 [DEPLOYMENT.md](DEPLOYMENT.md) 和 [docs/troubleshooting.md](docs/troubleshooting.md)。
+> `README.md` 只负责项目门面、快速开始和架构概览。DramaFlux 的部署流程与环境准备以 [DEPLOYMENT.md](DEPLOYMENT.md) 为主，服务细节看各服务 README，故障排查看 [docs/troubleshooting.md](docs/troubleshooting.md)。
 
 ## 概览
 
@@ -78,13 +78,13 @@ uv sync --all-packages
 ```
 
 3. 按顺序启动并联调：
-   - 启动 `services/signer-service`
-   - 捕获本地 session
-   - 启动 `services/api-server`
+   - 启动 Signer Service：`.\services\signer-service\scripts\start.ps1`
+   - 捕获本地 session：`.\services\api-server\scripts\capture_session.ps1`
+   - 启动 API Server：`.\services\api-server\scripts\start.ps1`
    - 需要前端热更新时，再进入 `services/api-server/web` 启动 Vite dev server
 
 > [!NOTE]
-> 这里故意只保留协作所需的最短路径。完整环境变量、脚本入口、验证命令和排障步骤统一维护在 [DEPLOYMENT.md](DEPLOYMENT.md)。
+> 这里故意只保留协作所需的最短路径。部署流程与环境变量以 [DEPLOYMENT.md](DEPLOYMENT.md) 为主，服务实现与本地细节看 `services/api-server/README.md`、`services/signer-service/README.md`，排障说明看 [docs/troubleshooting.md](docs/troubleshooting.md)。
 
 ## 常用入口
 
@@ -109,6 +109,7 @@ uv run pytest -q
 前端联调时，Vite 通过本地代理将 `/api` 和 `/health` 转发到 `http://127.0.0.1:18000`。更细的服务级说明请分别查看：
 
 - [services/api-server/README.md](services/api-server/README.md)
+- [services/signer-service/README.md](services/signer-service/README.md)
 - [DEPLOYMENT.md](DEPLOYMENT.md)
 - [docs/troubleshooting.md](docs/troubleshooting.md)
 
@@ -116,8 +117,9 @@ uv run pytest -q
 
 | 文档 | 用途 |
 | --- | --- |
-| [DEPLOYMENT.md](DEPLOYMENT.md) | 完整部署、启动顺序、验证与运维注意事项 |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | DramaFlux 的部署文档，涵盖环境准备、启动顺序、验证与运维注意事项 |
 | [services/api-server/README.md](services/api-server/README.md) | API Server 与 Web 的服务级说明 |
+| [services/signer-service/README.md](services/signer-service/README.md) | Signer Service 的服务级说明与设备侧依赖说明 |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | 常见故障定位与排查建议 |
 
 ## 项目边界
