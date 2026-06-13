@@ -78,7 +78,14 @@ uv sync --all-packages
 ```
 
 3. 按顺序启动并联调：
-   - 启动 Signer Service：`.\services\signer-service\scripts\start.ps1`
+   - 先准备一组共享 token，并启动 Signer Service：
+
+```powershell
+$env:HONGGUO_SIGNER_SERVICE_TOKEN="<your-token>"
+$env:HONGGUO_API_SIGNER_TOKEN=$env:HONGGUO_SIGNER_SERVICE_TOKEN
+.\services\signer-service\scripts\start.ps1
+```
+
    - 捕获本地 session：`.\services\api-server\scripts\capture_session.ps1`
    - 启动 API Server：`.\services\api-server\scripts\start.ps1`
    - 需要前端热更新时，再进入 `services/api-server/web` 启动 Vite dev server
