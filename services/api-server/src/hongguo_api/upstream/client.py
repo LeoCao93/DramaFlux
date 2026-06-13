@@ -21,6 +21,9 @@ _RANK_BOARDS = {
     "recommend": "comic_series_hot_rank",
     "hot": "comic_series_hot_play",
     "new": "comic_series_new_rank",
+    "must_watch": "ranklist_must_watch",
+    "followed": "ranklist_followed",
+    "hot_search": "ranklist_hot_search_sc",
 }
 
 
@@ -197,28 +200,77 @@ class HongguoClient:
     ) -> DramaPage:
         """根据公开榜单名称请求对应的上游榜单选择项。"""
 
-        del cursor
         try:
             upstream_board = _RANK_BOARDS[board]
         except KeyError:
             raise ValueError(f"unsupported board: {board}") from None
+
+        rank_offset = 0
+        session_uuid = str(uuid.uuid4())
+        if cursor is not None:
+            state = decode_cursor(cursor, "rank")
+            if set(state) != {"board", "next_offset", "session_uuid"}:
+                raise CursorError("cursor is invalid")
+            if state.get("board") != board:
+                raise CursorError("cursor does not belong to this board")
+            rank_offset = self._state_int(state, "next_offset")
+            session_uuid = self._state_string(state, "session_uuid")
+            if not session_uuid:
+                raise CursorError("cursor is invalid")
+
+        query = {
+            "cell_id": "7470092475068071998",
+            "tab_type": "26",
+            "client_req_type": "2",
+            "client_template": "2",
+            "selected_items": "comic_series_rank",
+            "sub_selected_items": upstream_board,
+            "session_uuid": session_uuid,
+        }
+        if cursor is not None:
+            query["offset"] = str(rank_offset)
+
         payload = await self.transport.request(
             "GET",
             "/reading/bookapi/bookmall/cell/change/v",
-            query={
-                "cell_id": "7470092475068071998",
-                "tab_type": "26",
-                "client_req_type": "2",
-                "client_template": "2",
-                "selected_items": "comic_series_rank",
-                "sub_selected_items": upstream_board,
-                "offset": str((page - 1) * page_size),
-                "limit": str(page_size),
-                # 每次请求生成新的会话 UUID，模拟 App 的榜单切换请求。
-                "session_uuid": str(uuid.uuid4()),
-            },
+            query=query,
         )
-        return parse_rank(payload)
+        parsed = parse_rank(
+            payload,
+            rank_offset=rank_offset,
+            page=page,
+            page_size=page_size,
+        )
+
+        data = payload.get("data")
+        data = data if isinstance(data, Mapping) else {}
+        cell_view = data.get("cell_view")
+        cell_view = cell_view if isinstance(cell_view, Mapping) else {}
+        next_offset = cell_view.get("next_offset")
+        has_valid_continuation = (
+            cell_view.get("has_more") is True
+            and isinstance(next_offset, int)
+            and not isinstance(next_offset, bool)
+            and next_offset >= 0
+        )
+        next_cursor = (
+            encode_cursor(
+                "rank",
+                {
+                    "board": board,
+                    "next_offset": next_offset,
+                    "session_uuid": session_uuid,
+                },
+            )
+            if has_valid_continuation
+            else None
+        )
+        return parsed.model_copy(
+            update={
+                "next_cursor": next_cursor,
+                "has_more": next_cursor is not None,
+            }
+        )
 
     async def detail(self, series_id: str) -> SeriesDetail:
         """获取短剧元数据及全部剧集列表。"""

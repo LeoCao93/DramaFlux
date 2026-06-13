@@ -131,13 +131,27 @@ def test_latest_parser_handles_malformed_payload_as_empty() -> None:
     assert parse_latest({"data": []}, today_only=False).items == []
 
 
-def test_rank_parser_flattens_cells_and_tolerates_bad_nested_values() -> None:
-    page = parse_rank(load("rank.json"))
+def test_rank_parser_uses_evidenced_fields_and_absolute_ranks() -> None:
+    page = parse_rank(load("rank.json"), rank_offset=30, page=2, page_size=10)
 
     assert [item.series_id for item in page.items] == ["100", "102"]
-    assert page.items[0].video_id == "101"
-    assert page.items[0].play_count == 300
+    ranked = page.items[0]
+    assert ranked.video_id == "101"
+    assert ranked.play_count == 300
+    assert ranked.rank == 31
+    assert ranked.score == 9.6
+    assert ranked.author == "测试作者"
+    assert ranked.copyright == "测试作者"
+    assert ranked.cover == "https://example.com/cover.jpg"
+    assert ranked.intro == "测试简介"
+    assert page.items[1].rank == 32
     assert page.items[1].episode_count == 0
+    assert page.items[1].score is None
+    assert page.items[1].duration == ""
+    assert page.items[1].publish_time == ""
+    assert page.page == 2
+    assert page.page_size == 10
+    assert page.has_more is True
 
 
 class RecordingTransport:
@@ -195,6 +209,9 @@ async def test_latest_client_builds_expected_request() -> None:
         ("recommend", "comic_series_hot_rank"),
         ("hot", "comic_series_hot_play"),
         ("new", "comic_series_new_rank"),
+        ("must_watch", "ranklist_must_watch"),
+        ("followed", "ranklist_followed"),
+        ("hot_search", "ranklist_hot_search_sc"),
     ],
 )
 async def test_rank_client_maps_supported_boards(board: str, expected: str) -> None:
@@ -205,6 +222,8 @@ async def test_rank_client_maps_supported_boards(board: str, expected: str) -> N
 
     _, _, kwargs = transport.calls[0]
     assert kwargs["query"]["sub_selected_items"] == expected
+    assert "offset" not in kwargs["query"]
+    assert "limit" not in kwargs["query"]
 
 
 async def test_rank_client_rejects_unknown_board_before_transport() -> None:

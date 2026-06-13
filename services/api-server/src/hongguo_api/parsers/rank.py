@@ -1,5 +1,6 @@
 """排行榜 cell 响应解析。"""
 
+import math
 from collections.abc import Mapping
 from typing import Any
 
@@ -17,7 +18,25 @@ def _safe_int(value: object) -> int:
         return 0
 
 
-def parse_rank(payload: Mapping[str, Any]) -> DramaPage:
+def _safe_score(value: object) -> float | None:
+    """只接受可转换为有限浮点数的榜单评分。"""
+
+    if isinstance(value, bool):
+        return None
+    try:
+        score = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return score if math.isfinite(score) else None
+
+
+def parse_rank(
+    payload: Mapping[str, Any],
+    *,
+    rank_offset: int = 0,
+    page: int = 1,
+    page_size: int = 30,
+) -> DramaPage:
     """展平 ``cell_data[].video_data[]`` 为统一短剧列表。"""
 
     data_value = payload.get("data")
@@ -37,10 +56,11 @@ def parse_rank(payload: Mapping[str, Any]) -> DramaPage:
             for value in raw_videos:
                 if not isinstance(value, Mapping):
                     continue
-                series_id = value.get("series_id")
+                series_id = value.get("series_id") or value.get("book_id")
                 if series_id is None or isinstance(series_id, (dict, list)):
                     continue
                 video_id = value.get("vid")
+                copyright_value = str(value.get("copyright") or "")
                 items.append(
                     DramaItem(
                         series_id=str(series_id),
@@ -54,7 +74,16 @@ def parse_rank(payload: Mapping[str, Any]) -> DramaPage:
                         episode_count=_safe_int(value.get("episode_cnt")),
                         play_count=_safe_int(value.get("play_cnt")),
                         cover=str(value.get("cover") or ""),
-                        copyright=str(value.get("copyright") or ""),
+                        copyright=copyright_value,
+                        author=copyright_value,
+                        intro=str(value.get("video_desc") or ""),
+                        rank=rank_offset + len(items) + 1,
+                        score=_safe_score(value.get("score")),
                     )
                 )
-    return DramaPage(items=items, has_more=view.get("has_more") is True)
+    return DramaPage(
+        items=items,
+        has_more=view.get("has_more") is True,
+        page=page,
+        page_size=page_size,
+    )

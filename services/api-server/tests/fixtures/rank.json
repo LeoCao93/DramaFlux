@@ -1,7 +1,8 @@
 {
   "data": {
     "cell_view": {
-      "has_more": false,
+      "has_more": true,
+      "next_offset": 40,
       "cell_data": [
         {
           "video_data": [
@@ -10,13 +11,20 @@
               "vid": "101",
               "title": "榜单短剧",
               "episode_cnt": 20,
-              "play_cnt": 300
+              "play_cnt": 300,
+              "score": 9.6,
+              "copyright": "测试作者",
+              "cover": "https://example.com/cover.jpg",
+              "video_desc": "测试简介"
             },
             {
-              "series_id": "102",
+              "book_id": "102",
               "title": "容错短剧",
               "episode_cnt": "unknown",
-              "play_cnt": null
+              "play_cnt": null,
+              "score": "unknown",
+              "duration": "未经证实",
+              "publish_time": "未经证实"
             }
           ]
         },

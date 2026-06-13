@@ -1,6 +1,8 @@
 from typing import Any
 
-from hongguo_api.pagination import decode_cursor
+import pytest
+
+from hongguo_api.pagination import CursorError, decode_cursor, encode_cursor
 from hongguo_api.upstream.client import HongguoClient
 
 
@@ -43,6 +45,29 @@ class SequencedTransport:
     ) -> dict[str, Any]:
         self.calls.append((method, path, kwargs))
         return self.payloads.pop(0)
+
+
+def rank_payload(
+    *,
+    has_more: bool,
+    next_offset: object = None,
+) -> dict[str, Any]:
+    cell_view: dict[str, Any] = {
+        "cell_data": [
+            {
+                "video_data": [
+                    {
+                        "series_id": "ranked-1",
+                        "title": "榜单短剧",
+                    }
+                ]
+            }
+        ],
+        "has_more": has_more,
+    }
+    if next_offset is not None:
+        cell_view["next_offset"] = next_offset
+    return {"data": {"cell_view": cell_view}}
 
 
 async def test_latest_collects_today_items_across_pages() -> None:
@@ -94,8 +119,6 @@ async def test_latest_collects_today_items_across_pages() -> None:
 
 
 async def test_latest_cursor_restores_upstream_state() -> None:
-    from hongguo_api.pagination import encode_cursor
-
     cursor = encode_cursor(
         "latest",
         {
@@ -131,3 +154,81 @@ async def test_latest_cursor_restores_upstream_state() -> None:
     assert [item.series_id for item in result.items] == ["new-1"]
     assert result.has_more is False
     assert result.next_cursor is None
+
+
+async def test_rank_first_page_omits_offset_and_limit_and_encodes_state() -> None:
+    transport = SequencedTransport([rank_payload(has_more=True, next_offset=40)])
+    client = HongguoClient(transport)  # type: ignore[arg-type]
+
+    result = await client.rank("hot", page=1, page_size=30)
+
+    query = transport.calls[0][2]["query"]
+    assert "offset" not in query
+    assert "limit" not in query
+    assert isinstance(query["session_uuid"], str)
+    assert query["session_uuid"]
+    assert result.next_cursor is not None
+    assert decode_cursor(result.next_cursor, "rank") == {
+        "board": "hot",
+        "next_offset": 40,
+        "session_uuid": query["session_uuid"],
+    }
+    assert result.items[0].rank == 1
+    assert result.page == 1
+    assert result.page_size == 30
+
+
+async def test_rank_cursor_reuses_session_and_exact_next_offset() -> None:
+    cursor = encode_cursor(
+        "rank",
+        {
+            "board": "new",
+            "next_offset": 73,
+            "session_uuid": "saved-session",
+        },
+    )
+    transport = SequencedTransport([rank_payload(has_more=False)])
+    client = HongguoClient(transport)  # type: ignore[arg-type]
+
+    result = await client.rank("new", page=1, page_size=20, cursor=cursor)
+
+    query = transport.calls[0][2]["query"]
+    assert query["offset"] == "73"
+    assert "limit" not in query
+    assert query["session_uuid"] == "saved-session"
+    assert result.items[0].rank == 74
+    assert result.next_cursor is None
+    assert result.has_more is False
+
+
+async def test_rank_cursor_rejects_cross_board_use_before_transport() -> None:
+    cursor = encode_cursor(
+        "rank",
+        {
+            "board": "hot",
+            "next_offset": 30,
+            "session_uuid": "saved-session",
+        },
+    )
+    transport = SequencedTransport([rank_payload(has_more=False)])
+    client = HongguoClient(transport)  # type: ignore[arg-type]
+
+    with pytest.raises(CursorError):
+        await client.rank("new", cursor=cursor)
+
+    assert transport.calls == []
+
+
+@pytest.mark.parametrize("next_offset", [None, -1, True, "30"])
+async def test_rank_does_not_create_cursor_for_invalid_next_offset(
+    next_offset: object,
+) -> None:
+    transport = SequencedTransport(
+        [rank_payload(has_more=True, next_offset=next_offset)]
+    )
+    client = HongguoClient(transport)  # type: ignore[arg-type]
+
+    result = await client.rank("hot")
+
+    assert result.next_cursor is None
+    assert result.has_more is False
