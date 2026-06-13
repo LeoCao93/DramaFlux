@@ -53,6 +53,7 @@ async def test_video_uses_multi_video_model_endpoint() -> None:
     video = await HongguoClient(transport).resolve_video(  # type: ignore[arg-type]
         "101",
         "1080p",
+        True,
     )
 
     method, path, kwargs = transport.calls[0]

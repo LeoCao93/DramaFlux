@@ -6,8 +6,8 @@ from hongguo_api.errors import (
     UpstreamTimeoutError,
 )
 from hongguo_api.main import create_app
+from hongguo_api.pagination import CursorError
 from hongguo_api.parsers.detail import DetailNotFoundError
-from hongguo_api.parsers.search import CursorError
 from hongguo_api.parsers.video import VideoNotFoundError
 from hongguo_api.signer.client import SignerTransportError
 
@@ -16,7 +16,12 @@ class FailingService:
     def __init__(self, error: Exception) -> None:
         self.error = error
 
-    async def resolve_video(self, video_id: str, quality: str) -> object:
+    async def resolve_video(
+        self,
+        video_id: str,
+        quality: str,
+        fast: bool,
+    ) -> object:
         raise self.error
 
 

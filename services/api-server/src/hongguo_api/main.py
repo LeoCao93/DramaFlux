@@ -13,8 +13,8 @@ from hongguo_api.errors import (
     UpstreamTimeoutError,
     UpstreamTransportError,
 )
+from hongguo_api.pagination import CursorError
 from hongguo_api.parsers.detail import DetailNotFoundError, DetailParseError
-from hongguo_api.parsers.search import CursorError
 from hongguo_api.parsers.video import (
     EncryptedStreamError,
     VideoModelParseError,

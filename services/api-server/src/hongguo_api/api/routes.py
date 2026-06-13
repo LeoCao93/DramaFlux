@@ -1,52 +1,94 @@
-"""API Server 的公开 HTTP 路由。
-
-路由层只负责参数校验、调用业务服务和包装响应，不负责签名、上游请求或解析。
-"""
+"""API Server 的公开 HTTP 路由。"""
 
 import uuid
-from typing import Any, Protocol
+from typing import Annotated, Any, Literal, Protocol
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Path, Query
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 
 from hongguo_api.api.schemas import ApiResponse
+from hongguo_api.cache import CachedResult
+from hongguo_api.pagination import PageRequest
+
+Genre = Literal["short_play", "comic_series", "ai_series"]
+RankBoard = Literal[
+    "recommend",
+    "hot",
+    "new",
+    "must_watch",
+    "followed",
+    "hot_search",
+]
+VideoQuality = Literal["360p", "480p", "540p", "720p", "1080p"]
 
 
 class HongguoService(Protocol):
-    """路由层依赖的结构化业务接口。
+    """路由层依赖的缓存感知业务接口。"""
 
-    实现类不需要显式继承本协议，只要提供相同的方法即可。生产环境注入的是
-    ``CachedHongguoService``，测试可以注入轻量 Fake，缺失会话时则注入
-    ``MissingSessionService``。
-    """
-
-    async def search(self, query: str, cursor: str | None = None) -> object: ...
+    async def search(
+        self,
+        query: str,
+        page: int,
+        page_size: int,
+        cursor: str | None,
+    ) -> CachedResult[object]: ...
 
     async def latest(
         self,
         genre: str,
         today_only: bool,
-        cursor: str | None = None,
-    ) -> object: ...
+        page: int,
+        page_size: int,
+        cursor: str | None,
+    ) -> CachedResult[object]: ...
 
-    async def rank(self, board: str, cursor: str | None = None) -> object: ...
+    async def rank(
+        self,
+        board: str,
+        page: int,
+        page_size: int,
+        cursor: str | None,
+    ) -> CachedResult[object]: ...
 
-    async def detail(self, series_id: str) -> object: ...
+    async def detail(self, series_id: str) -> CachedResult[object]: ...
 
-    async def resolve_video(self, video_id: str, quality: str) -> object: ...
+    async def resolve_video(
+        self,
+        video_id: str,
+        quality: str,
+        fast: bool,
+    ) -> CachedResult[object]: ...
+
+
+def build_page_request(
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 30,
+    cursor: Annotated[str | None, Query(max_length=4096)] = None,
+) -> PageRequest:
+    """把查询参数转换为共享分页模型，并保持 FastAPI 的 422 语义。"""
+
+    try:
+        return PageRequest(page=page, page_size=page_size, cursor=cursor)
+    except ValidationError as error:
+        raise RequestValidationError(error.errors()) from error
+
+
+Pagination = Annotated[PageRequest, Depends(build_page_request)]
+ResourceId = Annotated[str, Path(min_length=1, max_length=64)]
 
 
 def build_router(service: HongguoService) -> APIRouter:
-    """为指定业务实现创建路由。
-
-    ``service`` 被各路由闭包捕获，因此实现类的选择集中在 ``bootstrap_app.py``。
-    """
+    """为指定缓存感知业务实现创建路由。"""
 
     router = APIRouter()
 
-    def response(data: Any) -> ApiResponse:
-        """为每次成功请求生成独立 request_id 并包装统一响应。"""
-
-        return ApiResponse(data=data, request_id=str(uuid.uuid4()))
+    def response(result: CachedResult[Any]) -> ApiResponse:
+        return ApiResponse(
+            data=result.value,
+            cached=result.cached,
+            request_id=str(uuid.uuid4()),
+        )
 
     @router.get("/health")
     async def health() -> dict[str, str]:
@@ -54,47 +96,72 @@ def build_router(service: HongguoService) -> APIRouter:
 
     @router.get("/api/search", response_model=ApiResponse)
     async def search(
+        pagination: Pagination,
         q: str = Query(min_length=1, max_length=100),
-        cursor: str | None = Query(default=None, max_length=4096),
     ) -> ApiResponse:
-        return response(await service.search(q, cursor))
+        return response(
+            await service.search(
+                q,
+                pagination.page,
+                pagination.page_size,
+                pagination.cursor,
+            )
+        )
 
     @router.get("/api/latest", response_model=ApiResponse)
     async def latest(
-        genre: str = Query(default="short_play", min_length=1, max_length=50),
+        pagination: Pagination,
+        genre: Genre = "short_play",
         today_only: bool = True,
-        cursor: str | None = Query(default=None, max_length=4096),
     ) -> ApiResponse:
-        return response(await service.latest(genre, today_only, cursor))
+        return response(
+            await service.latest(
+                genre,
+                today_only,
+                pagination.page,
+                pagination.page_size,
+                pagination.cursor,
+            )
+        )
 
     @router.get("/api/rank", response_model=ApiResponse)
     async def rank(
-        board: str = Query(default="hot", pattern="^(recommend|hot|new)$"),
-        cursor: str | None = Query(default=None, max_length=4096),
+        pagination: Pagination,
+        board: RankBoard = "hot",
     ) -> ApiResponse:
-        return response(await service.rank(board, cursor))
+        return response(
+            await service.rank(
+                board,
+                pagination.page,
+                pagination.page_size,
+                pagination.cursor,
+            )
+        )
 
     @router.get("/api/books/{series_id}", response_model=ApiResponse)
-    async def detail(series_id: str) -> ApiResponse:
+    async def detail(series_id: ResourceId) -> ApiResponse:
         return response(await service.detail(series_id))
 
     @router.get("/api/books/{series_id}/episodes", response_model=ApiResponse)
-    async def episodes(series_id: str) -> ApiResponse:
-        # 详情解析器返回 Pydantic 模型；Fake 实现可能返回 dict，二者均可兼容。
-        detail_value = await service.detail(series_id)
+    async def episodes(series_id: ResourceId) -> ApiResponse:
+        detail_result = await service.detail(series_id)
+        detail_value = detail_result.value
         if hasattr(detail_value, "episodes"):
             episodes_value = detail_value.episodes
         elif isinstance(detail_value, dict):
             episodes_value = detail_value.get("episodes", [])
         else:
             episodes_value = []
-        return response(episodes_value)
+        return response(
+            CachedResult(value=episodes_value, cached=detail_result.cached)
+        )
 
     @router.get("/api/videos/{video_id}", response_model=ApiResponse)
     async def video(
-        video_id: str,
-        quality: str = Query(default="1080p", pattern=r"^\d{3,4}p$"),
+        video_id: ResourceId,
+        quality: VideoQuality = "1080p",
+        fast: bool = True,
     ) -> ApiResponse:
-        return response(await service.resolve_video(video_id, quality))
+        return response(await service.resolve_video(video_id, quality, fast))
 
     return router

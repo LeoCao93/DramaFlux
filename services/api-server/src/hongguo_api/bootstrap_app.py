@@ -34,24 +34,43 @@ class MissingSessionService:
     async def _missing(self) -> object:
         raise SessionMissingError()
 
-    async def search(self, query: str, cursor: str | None = None) -> object:
+    async def search(
+        self,
+        query: str,
+        page: int,
+        page_size: int,
+        cursor: str | None,
+    ) -> object:
         return await self._missing()
 
     async def latest(
         self,
         genre: str,
         today_only: bool,
-        cursor: str | None = None,
+        page: int,
+        page_size: int,
+        cursor: str | None,
     ) -> object:
         return await self._missing()
 
-    async def rank(self, board: str, cursor: str | None = None) -> object:
+    async def rank(
+        self,
+        board: str,
+        page: int,
+        page_size: int,
+        cursor: str | None,
+    ) -> object:
         return await self._missing()
 
     async def detail(self, series_id: str) -> object:
         return await self._missing()
 
-    async def resolve_video(self, video_id: str, quality: str) -> object:
+    async def resolve_video(
+        self,
+        video_id: str,
+        quality: str,
+        fast: bool,
+    ) -> object:
         return await self._missing()
 
 

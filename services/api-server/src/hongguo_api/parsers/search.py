@@ -7,17 +7,11 @@ from collections.abc import Mapping
 from typing import Any
 
 from hongguo_api.models import DramaItem, DramaPage
+from hongguo_api.pagination import CursorError
 
 _CURSOR_VERSION = 1
 _MAX_CURSOR_LENGTH = 2048
 _MAX_CURSOR_VALUE_LENGTH = 4096
-
-
-class CursorError(ValueError):
-    """公开 cursor 无法安全解码或不符合当前版本协议。"""
-
-    def __init__(self) -> None:
-        super().__init__("invalid search cursor")
 
 
 def _safe_int(value: object) -> int:

@@ -2,42 +2,66 @@
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import Any, Protocol, TypeVar
+from dataclasses import dataclass
+from typing import Any, Generic, Protocol, TypeVar
 
 from cachetools import TTLCache
 
+T = TypeVar("T")
 
-class HongguoService(Protocol):
-    """缓存层对内层业务服务的最小能力要求。"""
 
-    async def search(self, query: str, cursor: str | None = None) -> object: ...
+class RawHongguoService(Protocol):
+    """缓存层包装的原始业务服务，不包含缓存命中元数据。"""
+
+    async def search(
+        self,
+        query: str,
+        page: int,
+        page_size: int,
+        cursor: str | None,
+    ) -> object: ...
 
     async def latest(
         self,
         genre: str,
         today_only: bool,
-        cursor: str | None = None,
+        page: int,
+        page_size: int,
+        cursor: str | None,
     ) -> object: ...
 
-    async def rank(self, board: str, cursor: str | None = None) -> object: ...
+    async def rank(
+        self,
+        board: str,
+        page: int,
+        page_size: int,
+        cursor: str | None,
+    ) -> object: ...
 
     async def detail(self, series_id: str) -> object: ...
 
-    async def resolve_video(self, video_id: str, quality: str) -> object: ...
+    async def resolve_video(
+        self,
+        video_id: str,
+        quality: str,
+        fast: bool,
+    ) -> object: ...
 
 
-T = TypeVar("T")
+@dataclass(frozen=True)
+class CachedResult(Generic[T]):
+    """业务值及其是否来自缓存。"""
+
+    value: T
+    cached: bool
 
 
 class CachedHongguoService:
-    """在不修改业务客户端的前提下增加按接口区分的 TTL 缓存。
-
-    该类与路由要求的协议保持相同，因此可以透明包装 ``HongguoClient``。
-    """
+    """为原始业务服务增加按接口区分的 TTL 缓存。"""
 
     def __init__(
         self,
-        service: HongguoService,
+        service: RawHongguoService,
         *,
         maxsize: int = 512,
         search_ttl: float = 300,
@@ -47,7 +71,6 @@ class CachedHongguoService:
         video_ttl: float = 1_800,
     ) -> None:
         self.service = service
-        # 当前使用单个异步锁保护 cachetools 的非线程安全缓存结构，并避免并发穿透。
         self._lock = asyncio.Lock()
         self._caches = {
             "search": TTLCache(maxsize=maxsize, ttl=search_ttl),
@@ -62,56 +85,83 @@ class CachedHongguoService:
         namespace: str,
         key: tuple[object, ...],
         factory: Callable[[], Awaitable[T]],
-    ) -> T:
+    ) -> CachedResult[T]:
         """读取缓存；未命中时调用 factory，并仅缓存成功结果。"""
 
         cache: TTLCache[tuple[object, ...], Any] = self._caches[namespace]
         async with self._lock:
             try:
-                return cache[key]
+                return CachedResult(value=cache[key], cached=True)
             except KeyError:
                 pass
-            # factory 抛出异常时不会执行写入，因此失败响应不会被缓存。
             value = await factory()
             cache[key] = value
-            return value
+            return CachedResult(value=value, cached=False)
 
-    async def search(self, query: str, cursor: str | None = None) -> object:
+    async def search(
+        self,
+        query: str,
+        page: int,
+        page_size: int,
+        cursor: str | None,
+    ) -> CachedResult[object]:
         return await self._get(
             "search",
-            (query, cursor),
-            lambda: self.service.search(query, cursor),
+            (query, page, page_size, cursor),
+            lambda: self.service.search(query, page, page_size, cursor),
         )
 
     async def latest(
         self,
         genre: str,
         today_only: bool,
-        cursor: str | None = None,
-    ) -> object:
+        page: int,
+        page_size: int,
+        cursor: str | None,
+    ) -> CachedResult[object]:
         return await self._get(
             "latest",
-            (genre, today_only, cursor),
-            lambda: self.service.latest(genre, today_only, cursor),
+            (genre, today_only, page, page_size, cursor),
+            lambda: self.service.latest(
+                genre,
+                today_only,
+                page,
+                page_size,
+                cursor,
+            ),
         )
 
-    async def rank(self, board: str, cursor: str | None = None) -> object:
+    async def rank(
+        self,
+        board: str,
+        page: int,
+        page_size: int,
+        cursor: str | None,
+    ) -> CachedResult[object]:
         return await self._get(
             "rank",
-            (board, cursor),
-            lambda: self.service.rank(board, cursor),
+            (board, page, page_size, cursor),
+            lambda: self.service.rank(board, page, page_size, cursor),
         )
 
-    async def detail(self, series_id: str) -> object:
+    async def detail(self, series_id: str) -> CachedResult[object]:
         return await self._get(
             "detail",
             (series_id,),
             lambda: self.service.detail(series_id),
         )
 
-    async def resolve_video(self, video_id: str, quality: str) -> object:
+    async def resolve_video(
+        self,
+        video_id: str,
+        quality: str,
+        fast: bool,
+    ) -> CachedResult[object]:
+        if not fast:
+            value = await self.service.resolve_video(video_id, quality, fast)
+            return CachedResult(value=value, cached=False)
         return await self._get(
             "video",
-            (video_id, quality),
-            lambda: self.service.resolve_video(video_id, quality),
+            (video_id, quality, fast),
+            lambda: self.service.resolve_video(video_id, quality, fast),
         )

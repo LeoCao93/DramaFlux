@@ -1,28 +1,86 @@
+import pytest
 from fastapi.testclient import TestClient
 
+from hongguo_api.cache import CachedResult
 from hongguo_api.main import create_app
 
 
 class FakeHongguo:
-    async def search(self, query: str, cursor: str | None = None) -> dict:
-        return {"items": [{"series_id": "1", "title": query}], "next_cursor": cursor}
+    async def search(
+        self,
+        query: str,
+        page: int,
+        page_size: int,
+        cursor: str | None,
+    ) -> CachedResult[dict]:
+        return CachedResult(
+            value={
+                "items": [{"series_id": "1", "title": query}],
+                "next_cursor": cursor,
+                "page": page,
+                "page_size": page_size,
+            },
+            cached=True,
+        )
 
     async def latest(
         self,
         genre: str,
         today_only: bool,
-        cursor: str | None = None,
-    ) -> dict:
-        return {"items": [], "genre": genre, "today_only": today_only, "cursor": cursor}
+        page: int,
+        page_size: int,
+        cursor: str | None,
+    ) -> CachedResult[dict]:
+        return CachedResult(
+            value={
+                "items": [],
+                "genre": genre,
+                "today_only": today_only,
+                "cursor": cursor,
+                "page": page,
+                "page_size": page_size,
+            },
+            cached=False,
+        )
 
-    async def rank(self, board: str, cursor: str | None = None) -> dict:
-        return {"items": [], "board": board, "cursor": cursor}
+    async def rank(
+        self,
+        board: str,
+        page: int,
+        page_size: int,
+        cursor: str | None,
+    ) -> CachedResult[dict]:
+        return CachedResult(
+            value={
+                "items": [],
+                "board": board,
+                "cursor": cursor,
+                "page": page,
+                "page_size": page_size,
+            },
+            cached=False,
+        )
 
-    async def detail(self, series_id: str) -> dict:
-        return {"series_id": series_id, "episodes": [{"video_id": "2"}]}
+    async def detail(self, series_id: str) -> CachedResult[dict]:
+        return CachedResult(
+            value={"series_id": series_id, "episodes": [{"video_id": "2"}]},
+            cached=True,
+        )
 
-    async def resolve_video(self, video_id: str, quality: str) -> dict:
-        return {"video_id": video_id, "requested_quality": quality}
+    async def resolve_video(
+        self,
+        video_id: str,
+        quality: str,
+        fast: bool,
+    ) -> CachedResult[dict]:
+        return CachedResult(
+            value={
+                "video_id": video_id,
+                "requested_quality": quality,
+                "fast": fast,
+            },
+            cached=fast,
+        )
 
 
 def test_health_route_is_available() -> None:
@@ -31,16 +89,18 @@ def test_health_route_is_available() -> None:
     assert response.json()["server"] == "ready"
 
 
-def test_search_route_wraps_result_and_cursor() -> None:
+def test_search_route_forwards_page_inputs_and_reports_cache_hit() -> None:
     response = TestClient(create_app(FakeHongguo())).get(
         "/api/search",
-        params={"q": "测试", "cursor": "next"},
+        params={"q": "测试", "page": 2, "page_size": 50},
     )
     assert response.status_code == 200
     payload = response.json()
     assert payload["code"] == 200
     assert payload["data"]["items"][0]["title"] == "测试"
-    assert payload["data"]["next_cursor"] == "next"
+    assert payload["data"]["page"] == 2
+    assert payload["data"]["page_size"] == 50
+    assert payload["cached"] is True
     assert payload["request_id"]
 
 
@@ -48,18 +108,73 @@ def test_latest_rank_detail_episode_and_video_routes() -> None:
     client = TestClient(create_app(FakeHongguo()))
     latest = client.get(
         "/api/latest",
-        params={"genre": "short_play", "today_only": "true", "cursor": "c"},
+        params={
+            "genre": "short_play",
+            "today_only": "true",
+            "page": 1,
+            "page_size": 20,
+            "cursor": "c",
+        },
     )
-    rank = client.get("/api/rank", params={"board": "hot", "cursor": "r"})
+    rank = client.get(
+        "/api/rank",
+        params={"board": "must_watch", "page": 1, "page_size": 10, "cursor": "r"},
+    )
     detail = client.get("/api/books/1")
     episodes = client.get("/api/books/1/episodes")
-    video = client.get("/api/videos/2", params={"quality": "720p"})
+    video = client.get(
+        "/api/videos/2",
+        params={"quality": "720p", "fast": "false"},
+    )
 
     assert latest.json()["data"]["cursor"] == "c"
-    assert rank.json()["data"]["cursor"] == "r"
+    assert latest.json()["data"]["page_size"] == 20
+    assert rank.json()["data"]["board"] == "must_watch"
+    assert rank.json()["data"]["page_size"] == 10
     assert detail.json()["data"]["series_id"] == "1"
+    assert detail.json()["cached"] is True
     assert episodes.json()["data"] == [{"video_id": "2"}]
+    assert episodes.json()["cached"] is True
     assert video.json()["data"]["requested_quality"] == "720p"
+    assert video.json()["data"]["fast"] is False
+    assert video.json()["cached"] is False
+
+
+def test_cursor_cannot_be_combined_with_later_page() -> None:
+    response = TestClient(create_app(FakeHongguo())).get(
+        "/api/search",
+        params={"q": "测试", "cursor": "c", "page": 2},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("path", "params"),
+    [
+        ("/api/search", {"q": "测试", "page": 0}),
+        ("/api/search", {"q": "测试", "page_size": 0}),
+        ("/api/search", {"q": "测试", "page_size": 101}),
+        ("/api/rank", {"board": "unknown"}),
+        ("/api/videos/2", {"quality": "900p"}),
+    ],
+)
+def test_route_rejects_unsupported_list_and_video_inputs(
+    path: str,
+    params: dict[str, object],
+) -> None:
+    assert TestClient(create_app(FakeHongguo())).get(path, params=params).status_code == 422
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        f"/api/books/{'1' * 65}",
+        f"/api/books/{'1' * 65}/episodes",
+        f"/api/videos/{'1' * 65}",
+    ],
+)
+def test_route_rejects_oversized_ids(path: str) -> None:
+    assert TestClient(create_app(FakeHongguo())).get(path).status_code == 422
 
 
 def test_search_rejects_blank_and_oversized_query() -> None:

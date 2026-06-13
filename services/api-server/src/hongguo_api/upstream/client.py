@@ -27,15 +27,21 @@ class HongguoClient:
     def __init__(self, transport: SignedTransport) -> None:
         self.transport = transport
 
-    async def search(self, query: str, cursor: str | None = None) -> DramaPage:
+    async def search(
+        self,
+        query: str,
+        page: int = 1,
+        page_size: int = 30,
+        cursor: str | None = None,
+    ) -> DramaPage:
         """搜索短剧，并在有 cursor 时恢复上游分页状态。"""
 
         upstream_query = {
             "query": query,
             "tab_name": "feed",
             "search_source": "1",
-            "offset": "0",
-            "count": "0",
+            "offset": str((page - 1) * page_size),
+            "count": str(page_size),
             "use_correct": "true",
         }
         if cursor is not None:
@@ -57,6 +63,8 @@ class HongguoClient:
         self,
         genre: str,
         today_only: bool,
+        page: int = 1,
+        page_size: int = 30,
         cursor: str | None = None,
     ) -> DramaPage:
         """请求分类落地页，并按需要筛选“今日上新”条目。"""
@@ -69,9 +77,9 @@ class HongguoClient:
             body={
                 "filter_ids": "",
                 "req_scene": "default" if genre == "short_play" else genre,
-                "offset": 0,
+                "offset": (page - 1) * page_size,
                 "need_selector_panel": False,
-                "limit": 18,
+                "limit": page_size,
                 "select_items": {
                     "category_dim_epoch": [],
                     "online_time": [] if genre == "short_play" else ["days_7"],
@@ -88,7 +96,13 @@ class HongguoClient:
         )
         return parse_latest(payload, today_only=today_only)
 
-    async def rank(self, board: str, cursor: str | None = None) -> DramaPage:
+    async def rank(
+        self,
+        board: str,
+        page: int = 1,
+        page_size: int = 30,
+        cursor: str | None = None,
+    ) -> DramaPage:
         """根据公开榜单名称请求对应的上游榜单选择项。"""
 
         del cursor
@@ -106,6 +120,8 @@ class HongguoClient:
                 "client_template": "2",
                 "selected_items": "comic_series_rank",
                 "sub_selected_items": upstream_board,
+                "offset": str((page - 1) * page_size),
+                "limit": str(page_size),
                 # 每次请求生成新的会话 UUID，模拟 App 的榜单切换请求。
                 "session_uuid": str(uuid.uuid4()),
             },
@@ -135,9 +151,15 @@ class HongguoClient:
         )
         return parse_detail(payload, series_id)
 
-    async def resolve_video(self, video_id: str, quality: str) -> VideoResult:
+    async def resolve_video(
+        self,
+        video_id: str,
+        quality: str,
+        fast: bool = True,
+    ) -> VideoResult:
         """获取指定单集的视频模型并选择最合适的清晰度。"""
 
+        del fast
         payload = await self.transport.request(
             "POST",
             "/novel/player/multi_video_model/v1/",
