@@ -37,9 +37,18 @@ def test_detail_parser_orders_valid_episodes_and_skips_malformed_entries() -> No
 
     assert detail.series_id == "100"
     assert detail.title == "详情短剧"
+    assert detail.author == "测试作者"
+    assert detail.category == "都市"
+    assert detail.categories == ["都市", "逆袭"]
+    assert detail.duration == "20分钟"
+    assert detail.publish_time == "2026-06-13 12:00:00"
     assert detail.episode_count == 3
     assert [item.index for item in detail.episodes] == [1, 2]
     assert [item.video_id for item in detail.episodes] == ["101", "102"]
+    assert detail.episodes[0].first_pass_time == "2026-06-13 12:01:00"
+    assert detail.episodes[0].volume_name == "第一章"
+    assert detail.episodes[0].duration_seconds == 60
+    assert detail.episodes[0].cover == "https://image.test/episode-1.jpg"
     assert detail.episodes[1].cover == "https://image.test/episode-2.jpg"
 
 
@@ -61,6 +70,50 @@ def test_detail_parser_rejects_malformed_video_list() -> None:
         parse_detail(payload, "100")
 
 
+@pytest.mark.parametrize(
+    "series",
+    [
+        {},
+        {"video_data": None},
+        {"video_data": []},
+    ],
+)
+def test_detail_parser_rejects_missing_null_or_malformed_video_data(
+    series: object,
+) -> None:
+    with pytest.raises(DetailParseError):
+        parse_detail({"data": {"100": series}}, "100")
+
+
+def test_detail_parser_accepts_category_schema_list_with_ordered_deduplication() -> None:
+    payload = {
+        "data": {
+            "100": {
+                "video_data": {
+                    "category_schema": [
+                        {"name": "家庭"},
+                        {"name": "成长"},
+                        {"name": "家庭"},
+                        {"name": ""},
+                        {"bad": "ignored"},
+                    ],
+                    "video_list": [],
+                }
+            }
+        }
+    }
+
+    detail = parse_detail(payload, "100")
+
+    assert detail.category == "家庭"
+    assert detail.categories == ["家庭", "成长"]
+
+
+def test_detail_parser_rejects_empty_video_data_as_malformed() -> None:
+    with pytest.raises(DetailParseError):
+        parse_detail({"data": {"100": {"video_data": {}}}}, "100")
+
+
 def test_detail_parser_uses_safe_metadata_fallbacks() -> None:
     payload = {
         "data": {
@@ -79,7 +132,7 @@ def test_detail_parser_uses_safe_metadata_fallbacks() -> None:
     assert detail.title == "100"
     assert detail.episode_count == 1
     assert detail.episodes[0].video_id == "101"
-    assert detail.episodes[0].duration == 60
+    assert detail.episodes[0].duration_seconds == 60
 
 
 def test_video_parser_selects_requested_quality_and_ignores_invalid_urls() -> None:
@@ -88,6 +141,75 @@ def test_video_parser_selects_requested_quality_and_ignores_invalid_urls() -> No
     assert video.vod_id == "v-high"
     assert video.selected_quality == "1080p"
     assert video.url == "https://video.test/1080"
+
+
+def test_video_parser_maps_model_and_stream_video_ids_separately() -> None:
+    payload = {
+        "data": {
+            "101": {
+                "video_model": {
+                    "video_id": "model-vid",
+                    "video_list": [
+                        {
+                            "video_id": "stream-vod-id",
+                            "main_url": "https://video.test/stream",
+                            "video_meta": {"definition": "1080p"},
+                        }
+                    ],
+                }
+            }
+        }
+    }
+
+    video = parse_video_model(payload, "101", "1080p")
+
+    assert video.vid == "model-vid"
+    assert video.vod_id == "stream-vod-id"
+
+
+@pytest.mark.parametrize("query_key", ["x-expires", "expires", "expire"])
+def test_video_parser_extracts_expiry_from_selected_url(query_key: str) -> None:
+    payload = video_payload(
+        [
+            {
+                "video_id": "vod",
+                "main_url": (
+                    f"https://video.test/stream?{query_key}=1893456000"
+                ),
+                "video_meta": {"definition": "1080p"},
+            }
+        ]
+    )
+
+    video = parse_video_model(payload, "101", "1080p")
+
+    assert video.expires_at == "2030-01-01T00:00:00Z"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://video.test/stream",
+        "https://video.test/stream?expires=",
+        "https://video.test/stream?expires=not-a-number",
+        "https://video.test/stream?expires=0",
+        "https://video.test/stream?expires=-1",
+    ],
+)
+def test_video_parser_ignores_missing_or_invalid_expiry(url: str) -> None:
+    payload = video_payload(
+        [
+            {
+                "video_id": "vod",
+                "main_url": url,
+                "video_meta": {"definition": "1080p"},
+            }
+        ]
+    )
+
+    video = parse_video_model(payload, "101", "1080p")
+
+    assert video.expires_at is None
 
 
 def test_video_parser_selects_best_lower_quality() -> None:

@@ -5,6 +5,11 @@
         "series_title": "详情短剧",
         "series_intro": "脱敏测试简介",
         "series_cover": "https://image.test/series.jpg",
+        "author": "测试作者",
+        "category": "都市",
+        "category_schema": "[{\"name\":\"都市\"},{\"name\":\"逆袭\"},{\"name\":\"都市\"}]",
+        "duration": "20分钟",
+        "publish_time": "2026-06-13 12:00:00",
         "episode_cnt": 3,
         "video_list": [
           {
@@ -12,13 +17,18 @@
             "vid_index": 2,
             "title": "第2集",
             "duration": 61,
+            "firstPassTime": "2026-06-13 12:02:00",
+            "volume_name": "第二章",
             "episode_cover": "https://image.test/episode-2.jpg"
           },
           {
             "vid": "101",
             "vid_index": 1,
             "title": "第1集",
-            "duration": 60
+            "duration": 60,
+            "firstPassTime": "2026-06-13 12:01:00",
+            "volume_name": "第一章",
+            "cover": "https://image.test/episode-1.jpg"
           },
           {
             "vid": "bad",

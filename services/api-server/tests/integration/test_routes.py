@@ -63,7 +63,22 @@ class FakeHongguo:
 
     async def detail(self, series_id: str) -> CachedResult[dict]:
         return CachedResult(
-            value={"series_id": series_id, "episodes": [{"video_id": "2"}]},
+            value={
+                "series_id": series_id,
+                "author": "测试作者",
+                "category": "都市",
+                "categories": ["都市", "逆袭"],
+                "duration": "20分钟",
+                "publish_time": "2026-06-13 12:00:00",
+                "episodes": [
+                    {
+                        "video_id": "2",
+                        "first_pass_time": "2026-06-13 12:01:00",
+                        "volume_name": "第一章",
+                        "duration_seconds": 60,
+                    }
+                ],
+            },
             cached=True,
         )
 
@@ -76,7 +91,14 @@ class FakeHongguo:
         return CachedResult(
             value={
                 "video_id": video_id,
+                "vid": "model-vid",
+                "vod_id": "stream-vod-id",
                 "requested_quality": quality,
+                "selected_quality": quality,
+                "url": "https://video.test/stream?expires=1893456000",
+                "backup_url": None,
+                "encrypted": False,
+                "expires_at": "2030-01-01T00:00:00Z",
                 "fast": fast,
             },
             cached=fast,
@@ -132,10 +154,24 @@ def test_latest_rank_detail_episode_and_video_routes() -> None:
     assert rank.json()["data"]["board"] == "must_watch"
     assert rank.json()["data"]["page_size"] == 10
     assert detail.json()["data"]["series_id"] == "1"
+    assert detail.json()["data"]["author"] == "测试作者"
+    assert detail.json()["data"]["categories"] == ["都市", "逆袭"]
+    assert detail.json()["data"]["duration"] == "20分钟"
+    assert detail.json()["data"]["publish_time"] == "2026-06-13 12:00:00"
     assert detail.json()["cached"] is True
-    assert episodes.json()["data"] == [{"video_id": "2"}]
+    assert episodes.json()["data"] == [
+        {
+            "video_id": "2",
+            "first_pass_time": "2026-06-13 12:01:00",
+            "volume_name": "第一章",
+            "duration_seconds": 60,
+        }
+    ]
     assert episodes.json()["cached"] is True
     assert video.json()["data"]["requested_quality"] == "720p"
+    assert video.json()["data"]["vid"] == "model-vid"
+    assert video.json()["data"]["vod_id"] == "stream-vod-id"
+    assert video.json()["data"]["expires_at"] == "2030-01-01T00:00:00Z"
     assert video.json()["data"]["fast"] is False
     assert video.json()["cached"] is False
 

@@ -10,8 +10,9 @@ import binascii
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -34,12 +35,14 @@ class VideoResult(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     video_id: str = Field(min_length=1)
+    vid: str
     vod_id: str
     requested_quality: str
     selected_quality: str
     url: str = Field(min_length=1)
     backup_url: str | None = None
     encrypted: bool = False
+    expires_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -120,6 +123,30 @@ def _is_encrypted(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes"}
     return False
+
+
+def _expires_at(url: str) -> str | None:
+    """从播放地址读取正 Unix 秒时间戳并转换为 UTC ISO 时间。"""
+
+    try:
+        query = parse_qs(urlsplit(url).query, keep_blank_values=True)
+        raw_value = next(
+            (
+                query[key][0]
+                for key in ("x-expires", "expires", "expire")
+                if query.get(key)
+            ),
+            None,
+        )
+        timestamp = int(raw_value) if raw_value is not None else 0
+        if timestamp <= 0:
+            return None
+        return datetime.fromtimestamp(timestamp, tz=UTC).isoformat().replace(
+            "+00:00",
+            "Z",
+        )
+    except (OSError, OverflowError, TypeError, ValueError):
+        return None
 
 
 def _codec_score(meta: Mapping[str, Any]) -> int:
@@ -259,10 +286,12 @@ def parse_video_model(
     selected = _select(unencrypted, quality)
     return VideoResult(
         video_id=video_key,
+        vid=str(model.get("video_id") or ""),
         vod_id=selected.vod_id,
         requested_quality=quality,
         selected_quality=selected.definition,
         url=selected.url,
         backup_url=selected.backup_url,
         encrypted=False,
+        expires_at=_expires_at(selected.url),
     )

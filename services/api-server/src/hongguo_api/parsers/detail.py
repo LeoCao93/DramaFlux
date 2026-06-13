@@ -1,5 +1,6 @@
 """短剧详情与剧集列表解析。"""
 
+import json
 from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urlsplit
@@ -23,7 +24,9 @@ class Episode(BaseModel):
     index: int = Field(ge=0)
     video_id: str = Field(min_length=1)
     title: str
-    duration: int | None = Field(default=None, ge=0)
+    first_pass_time: str = ""
+    volume_name: str = ""
+    duration_seconds: int | None = Field(default=None, ge=0)
     cover: str = ""
 
 
@@ -34,6 +37,11 @@ class SeriesDetail(BaseModel):
 
     series_id: str = Field(min_length=1)
     title: str
+    author: str = ""
+    category: str = ""
+    categories: list[str] = Field(default_factory=list)
+    duration: str = ""
+    publish_time: str = ""
     episode_count: int = Field(ge=0)
     intro: str = ""
     cover: str = ""
@@ -93,6 +101,29 @@ def _http_url(value: Any) -> str:
     return value
 
 
+def _categories(value: Any) -> list[str]:
+    """解析分类 JSON/list，并按上游顺序去重。"""
+
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(value, list):
+        return []
+
+    categories: list[str] = []
+    seen: set[str] = set()
+    for raw_item in value:
+        if not isinstance(raw_item, Mapping):
+            continue
+        name = _text(raw_item.get("name")).strip()
+        if name and name not in seen:
+            categories.append(name)
+            seen.add(name)
+    return categories
+
+
 def parse_detail(payload: dict[str, Any], series_id: str) -> SeriesDetail:
     """解析指定短剧详情，跳过无 ID/序号的脏剧集并稳定排序。"""
 
@@ -104,7 +135,9 @@ def parse_detail(payload: dict[str, Any], series_id: str) -> SeriesDetail:
 
     wrapper = _mapping(data[series_key], "series")
     video_data = _mapping(wrapper.get("video_data"), "video_data")
-    raw_video_list = video_data.get("video_list", [])
+    if not video_data:
+        raise DetailParseError("video_data must not be empty")
+    raw_video_list = video_data.get("video_list")
     if not isinstance(raw_video_list, list):
         raise DetailParseError("video_list must be an array")
 
@@ -121,7 +154,9 @@ def parse_detail(payload: dict[str, Any], series_id: str) -> SeriesDetail:
                 index=index,
                 video_id=video_id,
                 title=_text(raw_item.get("title")),
-                duration=_integer(raw_item.get("duration")),
+                first_pass_time=_text(raw_item.get("firstPassTime")),
+                volume_name=_text(raw_item.get("volume_name")),
+                duration_seconds=_integer(raw_item.get("duration")),
                 cover=_http_url(
                     raw_item.get("episode_cover") or raw_item.get("cover")
                 ),
@@ -131,9 +166,18 @@ def parse_detail(payload: dict[str, Any], series_id: str) -> SeriesDetail:
     # 先按 vid_index 排序，重复序号再按 video_id 保证结果确定。
     episodes.sort(key=lambda item: (item.index, item.video_id))
     episode_count = _integer(video_data.get("episode_cnt"), len(episodes))
+    categories = _categories(video_data.get("category_schema"))
+    category = _text(video_data.get("category")).strip()
+    if not category and categories:
+        category = categories[0]
     return SeriesDetail(
         series_id=series_key,
         title=_text(video_data.get("series_title"), series_key),
+        author=_text(video_data.get("author")),
+        category=category,
+        categories=categories,
+        duration=_text(video_data.get("duration")),
+        publish_time=_text(video_data.get("publish_time")),
         episode_count=episode_count if episode_count is not None else len(episodes),
         intro=_text(video_data.get("series_intro")),
         cover=_http_url(video_data.get("series_cover")),

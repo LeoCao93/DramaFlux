@@ -38,10 +38,14 @@ async def test_video_uses_multi_video_model_endpoint() -> None:
             "data": {
                 "101": {
                     "video_model": {
+                        "video_id": "model-vid",
                         "video_list": [
                             {
                                 "video_id": "vod",
-                                "main_url": "https://video.test/stream",
+                                "main_url": (
+                                    "https://video.test/stream"
+                                    "?x-expires=1893456000"
+                                ),
                                 "video_meta": {"definition": "1080p"},
                             }
                         ]
@@ -59,4 +63,6 @@ async def test_video_uses_multi_video_model_endpoint() -> None:
     method, path, kwargs = transport.calls[0]
     assert (method, path) == ("POST", "/novel/player/multi_video_model/v1/")
     assert kwargs["body"]["mixed_video_id_map"] == {"1": ["101"]}  # type: ignore[index]
+    assert video.vid == "model-vid"
     assert video.vod_id == "vod"
+    assert video.expires_at == "2030-01-01T00:00:00Z"

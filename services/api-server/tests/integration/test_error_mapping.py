@@ -7,7 +7,7 @@ from hongguo_api.errors import (
 )
 from hongguo_api.main import create_app
 from hongguo_api.pagination import CursorError
-from hongguo_api.parsers.detail import DetailNotFoundError
+from hongguo_api.parsers.detail import DetailNotFoundError, DetailParseError
 from hongguo_api.parsers.video import VideoNotFoundError
 from hongguo_api.signer.client import SignerTransportError
 
@@ -22,6 +22,11 @@ class FailingService:
         quality: str,
         fast: bool,
     ) -> object:
+        raise self.error
+
+
+class FailingDetailService(FailingService):
+    async def detail(self, series_id: str) -> object:
         raise self.error
 
 
@@ -60,3 +65,19 @@ def test_resource_and_cursor_errors_have_stable_statuses() -> None:
         assert response.status_code == status
         assert response.json()["code"] == code
         assert "secret" not in response.text
+
+
+def test_detail_missing_series_is_404_but_malformed_detail_is_502() -> None:
+    missing = TestClient(
+        create_app(FailingDetailService(DetailNotFoundError("secret")))
+    ).get("/api/books/1")
+    malformed = TestClient(
+        create_app(FailingDetailService(DetailParseError("secret")))
+    ).get("/api/books/1")
+
+    assert missing.status_code == 404
+    assert missing.json()["code"] == "book_not_found"
+    assert malformed.status_code == 502
+    assert malformed.json()["code"] == "upstream_invalid_response"
+    assert "secret" not in missing.text
+    assert "secret" not in malformed.text
