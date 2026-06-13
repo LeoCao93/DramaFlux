@@ -84,6 +84,7 @@ def build_router(service: HongguoService) -> APIRouter:
     router = APIRouter()
 
     def response(result: CachedResult[Any]) -> ApiResponse:
+        # 统一在最外层补上 cached/request_id，避免每个路由重复拼装响应壳。
         return ApiResponse(
             data=result.value,
             cached=result.cached,
@@ -162,6 +163,7 @@ def build_router(service: HongguoService) -> APIRouter:
         quality: VideoQuality = "1080p",
         fast: bool = True,
     ) -> ApiResponse:
+        # fast 只影响上游取流和缓存策略，路由层只负责把参数透传给服务层。
         return response(await service.resolve_video(video_id, quality, fast))
 
     return router

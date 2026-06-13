@@ -28,6 +28,10 @@ def test_parse_session_capture_keeps_only_allowlisted_fields() -> None:
             "x-ladon": "signing-secret",
             "x-ss-stub": "body-signature",
             "Authorization": "Bearer unrelated-secret",
+            "lc": "search",
+            "X-Reading-Request": "search-context",
+            "X-XS-From-Web": "false",
+            "X-VC-BDTuring-SDK-Version": "3.3.0",
             "X-Api-Key": "unrelated-secret",
         },
     }
@@ -50,6 +54,11 @@ def test_parse_session_capture_keeps_only_allowlisted_fields() -> None:
         "os_version": "14",
     }
     assert snapshot.session_headers == {
+        "authorization": "Bearer unrelated-secret",
+        "lc": "search",
+        "x-reading-request": "search-context",
+        "x-xs-from-web": "false",
+        "x-vc-bdturing-sdk-version": "3.3.0",
         "x-tt-token": "token",
         "cookie": "session=cookie",
         "user-agent": "Hongguo/1.0",
@@ -71,6 +80,50 @@ def test_parse_session_capture_normalizes_mixed_case_query_fields() -> None:
     snapshot = parse_session_capture(capture)
 
     assert snapshot.base_query == {"device_id": "1", "iid": "2"}
+
+
+def test_parse_session_capture_keeps_stable_client_fingerprint_only() -> None:
+    capture = {
+        "url": (
+            "https://api.fqnovel.com/path?"
+            "ac=wifi&device_brand=MuMu&dpi=320&dragon_device_type=phone&"
+            "font_scale=1.0&gender=0&host_abi=x86_64&language=zh&"
+            "manifest_version_code=600&need_personal_recommend=1&"
+            "network_type=wifi&os=android&os_api=35&resolution=1080x1920&"
+            "rom_version=12&ssmix=a&update_version_code=600&"
+            "app_dark_mode=0&app_mini_window=0&compliance_status=0&"
+            "is_android_pad_screen=0&"
+            "_rticket=expired&battery_pct=99&current_volume=7&"
+            "down_speed=1024&normal_session_id=ephemeral"
+        ),
+        "headers": {},
+    }
+
+    snapshot = parse_session_capture(capture)
+
+    assert snapshot.base_query == {
+        "ac": "wifi",
+        "app_dark_mode": "0",
+        "app_mini_window": "0",
+        "compliance_status": "0",
+        "device_brand": "MuMu",
+        "dpi": "320",
+        "dragon_device_type": "phone",
+        "font_scale": "1.0",
+        "gender": "0",
+        "host_abi": "x86_64",
+        "is_android_pad_screen": "0",
+        "language": "zh",
+        "manifest_version_code": "600",
+        "need_personal_recommend": "1",
+        "network_type": "wifi",
+        "os": "android",
+        "os_api": "35",
+        "resolution": "1080x1920",
+        "rom_version": "12",
+        "ssmix": "a",
+        "update_version_code": "600",
+    }
 
 
 @pytest.mark.parametrize(

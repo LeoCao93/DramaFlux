@@ -1,4 +1,4 @@
-"""视频模型解析、清晰度选择和加密流检测。
+﻿"""视频模型解析、清晰度选择和加密流检测。
 
 红果不同版本返回过两种结构：``video_list`` 可能是数组，也可能是以
 ``video_1``、``video_2`` 为键的对象；播放地址也可能是 HTTP URL 或 Base64
@@ -278,12 +278,8 @@ def parse_video_model(
     if not candidates:
         raise VideoModelParseError("video model contains no valid playback URLs")
 
-    # 项目明确不实现 CENC/DRM 解密。
-    unencrypted = [item for item in candidates if not item.encrypted]
-    if not unencrypted:
-        raise EncryptedStreamError("encrypted stream is unsupported")
-
-    selected = _select(unencrypted, quality)
+    # 不在这里按加密状态直接丢弃候选；上层需要拿到红果实际返回的播放地址。
+    selected = _select(candidates, quality)
     return VideoResult(
         video_id=video_key,
         vid=str(model.get("video_id") or ""),
@@ -292,6 +288,7 @@ def parse_video_model(
         selected_quality=selected.definition,
         url=selected.url,
         backup_url=selected.backup_url,
-        encrypted=False,
+        # 这个标记告诉调用方：地址可返回，但流本身是否加密要如实保留。
+        encrypted=selected.encrypted,
         expires_at=_expires_at(selected.url),
     )

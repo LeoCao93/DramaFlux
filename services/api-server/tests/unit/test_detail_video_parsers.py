@@ -6,7 +6,6 @@ import pytest
 
 from hongguo_api.parsers.detail import DetailNotFoundError, DetailParseError, parse_detail
 from hongguo_api.parsers.video import (
-    EncryptedStreamError,
     VideoModelParseError,
     VideoNotFoundError,
     parse_video_model,
@@ -226,7 +225,7 @@ def test_video_parser_uses_lowest_higher_quality_when_no_lower_exists() -> None:
     assert video.vod_id == "v-low"
 
 
-def test_video_parser_rejects_only_encrypted_candidates() -> None:
+def test_video_parser_returns_encrypted_candidate_url() -> None:
     payload = video_payload(
         [
             {
@@ -238,8 +237,10 @@ def test_video_parser_rejects_only_encrypted_candidates() -> None:
         ]
     )
 
-    with pytest.raises(EncryptedStreamError):
-        parse_video_model(payload, "101", "1080p")
+    video = parse_video_model(payload, "101", "1080p")
+
+    assert video.url == "https://video.test/encrypted"
+    assert video.encrypted is True
 
 
 @pytest.mark.parametrize(
@@ -320,5 +321,7 @@ def test_video_parser_accepts_real_object_shape_and_detects_encryption() -> None
         }
     }
 
-    with pytest.raises(EncryptedStreamError):
-        parse_video_model(payload, "101", "1080p")
+    video = parse_video_model(payload, "101", "1080p")
+
+    assert video.url == "https://video.test/encrypted"
+    assert video.encrypted is True

@@ -63,6 +63,74 @@ def test_search_parser_handles_malformed_top_level_data() -> None:
     assert parse_search({"search_tabs": [None]}).items == []
 
 
+def test_search_parser_handles_live_video_data_list_shape() -> None:
+    page = parse_search(
+        {
+            "search_tabs": [
+                {
+                    "tab_type": 11,
+                    "next_offset": 6,
+                    "passback": "6",
+                    "search_id": "search-id",
+                    "has_more": True,
+                    "data": [
+                        {
+                            "book_id": "book-id",
+                            "video_data": [
+                                {
+                                    "series_id": "series-id",
+                                    "vid": "video-id",
+                                    "title": "御兽：从SSS天赋开始狂飙",
+                                    "episode_cnt": 81,
+                                    "cover": "https://img.test/cover.heic",
+                                    "copyright": "版权方",
+                                    "duration": 7289,
+                                    "play_cnt": 2120362,
+                                    "score": "8.3",
+                                    "sub_title": "脑洞·系统·32.9万收藏",
+                                    "sub_title_list": [
+                                        {"content": "脑洞", "data_type": 3},
+                                        {"content": "系统", "data_type": 3},
+                                        {"content": "32.9万收藏", "highlight": True},
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        },
+        page=2,
+        page_size=30,
+    )
+
+    assert page.page == 2
+    assert page.page_size == 30
+    assert page.has_more is True
+    assert decode_search_cursor(page.next_cursor) == {
+        "offset": 6,
+        "passback": "6",
+        "search_id": "search-id",
+    }
+    assert page.items == [
+        DramaItem(
+            series_id="series-id",
+            video_id="video-id",
+            title="御兽：从SSS天赋开始狂飙",
+            episode_count=81,
+            play_count=2120362,
+            cover="https://img.test/cover.heic",
+            copyright="版权方",
+            categories=["脑洞", "系统"],
+            type="脑洞",
+            duration="7289",
+            subtitles=["脑洞", "系统", "32.9万收藏"],
+            intro="脑洞·系统·32.9万收藏",
+            score=8.3,
+        )
+    ]
+
+
 def test_search_cursor_is_deterministic_url_safe_and_round_trips_unicode() -> None:
     state = {"offset": 20, "passback": "中文+/=", "search_id": "id"}
 
@@ -167,9 +235,7 @@ class RecordingTransport:
 async def test_search_client_decodes_cursor_into_upstream_query() -> None:
     transport = RecordingTransport({"search_tabs": []})
     client = HongguoClient(transport)  # type: ignore[arg-type]
-    cursor = encode_search_cursor(
-        {"offset": 40, "passback": "next-pass", "search_id": "search-id"}
-    )
+    cursor = encode_search_cursor({"offset": 40, "passback": "next-pass", "search_id": "search-id"})
 
     await client.search("测试", cursor=cursor)
 
@@ -177,8 +243,28 @@ async def test_search_client_decodes_cursor_into_upstream_query() -> None:
     assert (method, path) == ("GET", "/reading/bookapi/search/tab/v")
     assert kwargs["query"]["query"] == "测试"
     assert kwargs["query"]["offset"] == "40"
+    assert kwargs["query"]["tab_type"] == "11"
+    assert kwargs["query"]["count"] == "30"
     assert kwargs["query"]["passback"] == "next-pass"
     assert kwargs["query"]["search_id"] == "search-id"
+
+
+async def test_search_client_builds_short_drama_first_page_query() -> None:
+    transport = RecordingTransport({"search_tabs": []})
+    client = HongguoClient(transport)  # type: ignore[arg-type]
+
+    await client.search("测试", page=1, page_size=30)
+
+    _, _, kwargs = transport.calls[0]
+    query = kwargs["query"]
+    assert query["query"] == "测试"
+    assert query["bookstore_tab"] == "16"
+    assert query["tab_name"] == "feed"
+    assert query["offset"] == "0"
+    assert query["count"] == "0"
+    assert query["clicked_content"] == "page_search_button"
+    assert query["is_first_enter_search"] == "true"
+    assert "tab_type" not in query
 
 
 async def test_search_client_rejects_invalid_cursor_before_transport() -> None:

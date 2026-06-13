@@ -13,11 +13,16 @@ CANONICAL_SECURITY_HEADERS = {
 }
 
 CANONICAL_SESSION_HEADERS = {
+    "authorization": "authorization",
     "cookie": "cookie",
+    "lc": "lc",
     "x-tt-token": "x-tt-token",
     "user-agent": "user-agent",
+    "x-reading-request": "x-reading-request",
     "x-tt-store-region": "x-tt-store-region",
     "x-tt-store-region-src": "x-tt-store-region-src",
+    "x-vc-bdturing-sdk-version": "x-vc-bdturing-sdk-version",
+    "x-xs-from-web": "x-xs-from-web",
     "passport-sdk-version": "passport-sdk-version",
     "sdk-version": "sdk-version",
 }

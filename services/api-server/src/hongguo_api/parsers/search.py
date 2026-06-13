@@ -25,6 +25,48 @@ def _safe_int(value: object) -> int:
         return 0
 
 
+def _safe_float(value: object) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _safe_text(value: object) -> str:
+    if value is None or isinstance(value, (dict, list, tuple, set)):
+        return ""
+    return str(value)
+
+
+def _video_mapping(cell: Mapping[str, Any]) -> Mapping[str, Any]:
+    value = cell.get("video_data")
+    if isinstance(value, Mapping):
+        return value
+    if isinstance(value, list) and value and isinstance(value[0], Mapping):
+        return value[0]
+    return {}
+
+
+def _subtitle_fields(video: Mapping[str, Any]) -> tuple[list[str], list[str]]:
+    subtitles: list[str] = []
+    categories: list[str] = []
+    value = video.get("sub_title_list")
+    if not isinstance(value, list):
+        return subtitles, categories
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        content = _safe_text(item.get("content")).strip()
+        if not content:
+            continue
+        subtitles.append(content)
+        if item.get("data_type") == 3:
+            categories.append(content)
+    return subtitles, categories
+
+
 def _cursor_state(value: Mapping[str, object]) -> dict[str, int | str | None]:
     """验证 cursor 内部状态，限制字段类型和长度。"""
 
@@ -35,9 +77,7 @@ def _cursor_state(value: Mapping[str, object]) -> dict[str, int | str | None]:
     state: dict[str, int | str | None] = {"offset": offset}
     for key in ("passback", "search_id"):
         item = value.get(key)
-        if item is not None and (
-            not isinstance(item, str) or len(item) > _MAX_CURSOR_VALUE_LENGTH
-        ):
+        if item is not None and (not isinstance(item, str) or len(item) > _MAX_CURSOR_VALUE_LENGTH):
             raise CursorError()
         state[key] = item
     return state
@@ -81,13 +121,21 @@ def decode_search_cursor(cursor: str | None) -> dict[str, int | str | None]:
     return _cursor_state(value)
 
 
-def parse_search(payload: Mapping[str, Any]) -> DramaPage:
+def parse_search(
+    payload: Mapping[str, Any],
+    *,
+    page: int = 1,
+    page_size: int = 30,
+) -> DramaPage:
     """把搜索 tab 的嵌套结构转换为统一 ``DramaPage``。"""
 
     tabs = payload.get("search_tabs")
     if not isinstance(tabs, list) or not tabs or not isinstance(tabs[0], Mapping):
-        return DramaPage()
-    tab = tabs[0]
+        return DramaPage(page=page, page_size=page_size)
+    tab = next(
+        (item for item in tabs if isinstance(item, Mapping) and isinstance(item.get("data"), list)),
+        tabs[0],
+    )
     raw_items = tab.get("data")
     items: list[DramaItem] = []
     if isinstance(raw_items, list):
@@ -96,21 +144,31 @@ def parse_search(payload: Mapping[str, Any]) -> DramaPage:
                 continue
             # 不同 App 版本可能把标题和集数放在两个不同子对象中。
             detail_value = cell.get("video_detail")
-            video_value = cell.get("video_data")
             detail = detail_value if isinstance(detail_value, Mapping) else {}
-            video = video_value if isinstance(video_value, Mapping) else {}
-            series_id = cell.get("book_id") or cell.get("search_result_id")
+            video = _video_mapping(cell)
+            series_id = (
+                video.get("series_id") or cell.get("book_id") or cell.get("search_result_id")
+            )
             if series_id is None or isinstance(series_id, (dict, list)):
                 continue
+            subtitles, categories = _subtitle_fields(video)
             items.append(
                 DramaItem(
                     series_id=str(series_id),
-                    title=str(detail.get("series_title") or video.get("title") or ""),
-                    episode_count=_safe_int(
-                        detail.get("episode_cnt") or video.get("episode_cnt")
+                    video_id=(
+                        _safe_text(video.get("vid")) or _safe_text(detail.get("video_id")) or None
                     ),
-                    cover=str(video.get("cover") or ""),
-                    copyright=str(video.get("copyright") or ""),
+                    title=_safe_text(detail.get("series_title") or video.get("title")),
+                    episode_count=_safe_int(detail.get("episode_cnt") or video.get("episode_cnt")),
+                    play_count=_safe_int(video.get("play_cnt")),
+                    cover=_safe_text(video.get("cover")),
+                    copyright=_safe_text(video.get("copyright")),
+                    categories=categories,
+                    type=categories[0] if categories else "",
+                    duration=_safe_text(video.get("duration")),
+                    intro=_safe_text(video.get("sub_title")),
+                    subtitles=subtitles,
+                    score=_safe_float(video.get("score")),
                 )
             )
 
@@ -135,4 +193,10 @@ def parse_search(payload: Mapping[str, Any]) -> DramaPage:
             )
         except CursorError:
             has_more = False
-    return DramaPage(items=items, next_cursor=cursor, has_more=has_more)
+    return DramaPage(
+        items=items,
+        next_cursor=cursor,
+        has_more=has_more,
+        page=page,
+        page_size=page_size,
+    )

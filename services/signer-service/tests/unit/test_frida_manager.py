@@ -24,6 +24,11 @@ class FakeExports:
             "url": "https://api.example.test/resource",
             "headers": {
                 "X-Gorgon": "gorgon",
+                "Authorization": "Bearer search-session",
+                "lc": "search",
+                "X-Reading-Request": "search-context",
+                "X-XS-From-Web": "false",
+                "X-VC-BDTuring-SDK-Version": "3.3.0",
                 "x-tt-token": "secret",
                 "cookie": "session=secret",
             },
@@ -168,9 +173,7 @@ def make_manager(
 
 
 def test_normalize_rpc_headers_accepts_map_values() -> None:
-    assert normalize_rpc_headers(
-        {"X-Khronos": 123, "X-Argus": None}
-    ) == {"X-Khronos": "123"}
+    assert normalize_rpc_headers({"X-Khronos": 123, "X-Argus": None}) == {"X-Khronos": "123"}
 
 
 def test_normalize_rpc_headers_accepts_non_dict_mapping() -> None:
@@ -290,9 +293,7 @@ def test_watchdog_does_not_recover_during_active_capture(
     watchdog = Watchdog(manager.health, recovered.set, interval=0.01)
     capture_result: list[dict[str, object]] = []
 
-    capture = threading.Thread(
-        target=lambda: capture_result.append(manager.capture_session(1000))
-    )
+    capture = threading.Thread(target=lambda: capture_result.append(manager.capture_session(1000)))
     capture.start()
     while not script.exports_sync.grab_calls:
         time.sleep(0.001)
@@ -447,9 +448,7 @@ def test_hung_rpc_rejects_repeated_calls_without_spawning_workers(
 
     assert health is False
     assert elapsed < 0.1
-    assert first_script.exports_sync.sign_calls == [
-        ("https://api.example.test/first", {})
-    ]
+    assert first_script.exports_sync.sign_calls == [("https://api.example.test/first", {})]
     assert len(rpc_workers) == 1
 
     blocker.set()
@@ -511,6 +510,11 @@ def test_capture_session_normalizes_and_sanitizes_headers(tmp_path: Path) -> Non
     assert result == {
         "url": "https://api.example.test/resource",
         "headers": {
+            "authorization": "Bearer search-session",
+            "lc": "search",
+            "x-reading-request": "search-context",
+            "x-xs-from-web": "false",
+            "x-vc-bdturing-sdk-version": "3.3.0",
             "x-tt-token": "secret",
             "cookie": "session=secret",
         },
@@ -588,11 +592,7 @@ def test_concurrent_sign_calls_share_one_attachment(tmp_path: Path) -> None:
 
 def test_oracle_uses_required_java_collections_and_restores_grab_hook() -> None:
     source = (
-        Path(__file__).parents[2]
-        / "src"
-        / "hongguo_signer"
-        / "frida_runtime"
-        / "oracle.js"
+        Path(__file__).parents[2] / "src" / "hongguo_signer" / "frida_runtime" / "oracle.js"
     ).read_text(encoding="utf-8")
 
     assert 'Java.use("java.util.HashMap")' in source

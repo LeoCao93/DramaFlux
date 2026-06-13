@@ -42,18 +42,39 @@ class HongguoClient:
     ) -> DramaPage:
         """搜索短剧，并在有 cursor 时恢复上游分页状态。"""
 
+        first_page = cursor is None and page == 1
         upstream_query = {
+            "bookshelf_search_plan": "4",
+            "live_room_id": "0",
+            "user_is_login": "0",
+            "bookstore_tab": "16",
+            "clicked_content": "page_search_button",
+            "report_info": "",
+            "use_lynx": "false",
+            "product_id": "0",
+            "line_words_num": "0",
             "query": query,
             "tab_name": "feed",
-            "search_source": "1",
+            "last_consume_interval": "0",
+            "pad_column_cover": "0",
+            "only_feed": "false",
             "offset": str((page - 1) * page_size),
-            "count": str(page_size),
+            "from_rs": "false",
+            "only_large_card": "false",
+            "count": "0" if first_page else str(page_size),
+            "search_source": "1",
+            "search_source_id": "clks###",
             "use_correct": "true",
+            "last_search_page_interval": "0",
+            "seed_product_id": "0",
+            "is_first_enter_search": "true" if first_page else "false",
+            "client_ab_info": "{}",
         }
         if cursor is not None:
             # 对外 cursor 是不透明字符串，调用方无需了解 passback/search_id。
             state = decode_search_cursor(cursor)
             upstream_query["offset"] = str(state["offset"])
+            upstream_query["tab_type"] = "11"
             for key in ("passback", "search_id"):
                 value = state[key]
                 if value is not None:
@@ -63,7 +84,7 @@ class HongguoClient:
             "/reading/bookapi/search/tab/v",
             query=upstream_query,
         )
-        return parse_search(payload)
+        return parse_search(payload, page=page, page_size=page_size)
 
     async def latest(
         self,
@@ -303,6 +324,8 @@ class HongguoClient:
     ) -> VideoResult:
         """获取指定单集的视频模型并选择最合适的清晰度。"""
 
+        # 目前 fast 主要作为 API 语义保留，真实取流请求保持和刷新路径一致，
+        # 由上层缓存层决定是否复用结果。
         del fast
         payload = await self.transport.request(
             "POST",

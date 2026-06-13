@@ -148,6 +148,7 @@ def test_capture_endpoint_returns_session_snapshot(
     assert response.json()["api_host"] == "api5-normal-sinfonlinea.fqnovel.com"
     assert response.json()["base_query"] == {"device_id": "1", "iid": "2"}
     assert response.json()["session_headers"] == {
+        "authorization": "drop",
         "cookie": "session=secret",
         "x-tt-token": "token",
     }

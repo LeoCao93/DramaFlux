@@ -13,27 +13,53 @@ from hongguo_contracts.signer import SessionSnapshot
 
 ALLOWED_QUERY_FIELDS = frozenset(
     {
+        "ac",
         "iid",
         "device_id",
         "cdid",
         "klink_egdi",
         "aid",
+        "app_dark_mode",
+        "app_mini_window",
         "app_name",
         "version_code",
         "version_name",
         "channel",
+        "compliance_status",
+        "device_brand",
         "device_platform",
         "device_type",
+        "dpi",
+        "dragon_device_type",
+        "font_scale",
+        "gender",
+        "host_abi",
+        "is_android_pad_screen",
+        "language",
+        "manifest_version_code",
+        "need_personal_recommend",
+        "network_type",
+        "os",
+        "os_api",
         "os_version",
+        "resolution",
+        "rom_version",
+        "ssmix",
+        "update_version_code",
     }
 )
 ALLOWED_SESSION_HEADERS = frozenset(
     {
+        "authorization",
         "cookie",
+        "lc",
         "x-tt-token",
         "user-agent",
+        "x-reading-request",
         "x-tt-store-region",
         "x-tt-store-region-src",
+        "x-vc-bdturing-sdk-version",
+        "x-xs-from-web",
         "passport-sdk-version",
         "sdk-version",
     }
@@ -57,12 +83,9 @@ def parse_session_capture(captured: object) -> SessionSnapshot:
             "invalid signer capture: url must be a string and headers an object"
         )
     if not all(
-        isinstance(key, str) and isinstance(value, str)
-        for key, value in raw_headers.items()
+        isinstance(key, str) and isinstance(value, str) for key, value in raw_headers.items()
     ):
-        raise SessionCaptureError(
-            "invalid signer capture: header names and values must be strings"
-        )
+        raise SessionCaptureError("invalid signer capture: header names and values must be strings")
 
     parsed = urlsplit(url)
     hostname = parsed.hostname
