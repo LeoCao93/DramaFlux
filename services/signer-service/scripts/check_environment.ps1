@@ -6,7 +6,9 @@ $env:UV_CACHE_DIR = Join-Path $WorkspaceRoot ".uv-cache"
 
 Push-Location $WorkspaceRoot
 try {
-    $settingsJson = & uv run --project $ServiceRoot python -c @"
+    # 使用管道方式传递 Python 代码，避免 PowerShell here-string 双引号被 Strip
+    # here-string 内容通过 stdin 传给 Python exec()，保持代码原样不变
+    $settingsJson = @"
 import json
 import frida
 from hongguo_signer.config import SignerSettings
@@ -26,7 +28,7 @@ print(json.dumps({
     ),
     "python_frida_version": frida.__version__,
 }))
-"@
+"@ | & uv run --project $ServiceRoot python -c "import sys; exec(sys.stdin.read())"
     if ($LASTEXITCODE -ne 0) {
         throw "Unable to load signer settings."
     }
@@ -51,12 +53,14 @@ print(json.dumps({
 
     & $settings.mumu_cli version
     & $settings.mumu_cli info --vmindex $settings.vmindex
-    & uv run --project $ServiceRoot python -c @"
+    # 使用管道方式传递 Python 代码，避免 PowerShell here-string 双引号被 Strip
+    # here-string 内容通过 stdin 传给 Python exec()，保持代码原样不变
+    @"
 from hongguo_signer.config import SignerSettings
 from hongguo_signer.device.manager import DeviceManager
 
 print(DeviceManager(SignerSettings()).inspect())
-"@
+"@ | & uv run --project $ServiceRoot python -c "import sys; exec(sys.stdin.read())"
     if ($LASTEXITCODE -ne 0) {
         throw "MuMu, ADB, root, or app process check failed."
     }

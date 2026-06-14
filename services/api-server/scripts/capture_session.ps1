@@ -18,7 +18,11 @@ $snapshot = Invoke-RestMethod `
 
 $parent = Split-Path -Parent $OutputPath
 if ($parent) {
-    New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    $fullParent = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($parent)
+    New-Item -ItemType Directory -Force -Path $fullParent | Out-Null
 }
-$snapshot | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8 $OutputPath
+$fullOutputPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputPath)
+$jsonContent = $snapshot | ConvertTo-Json -Depth 10
+# 使用不带 BOM 的 UTF-8 编码写入文件
+[System.IO.File]::WriteAllText($fullOutputPath, $jsonContent, [System.Text.UTF8Encoding]::new($false))
 Write-Host "Session saved to $OutputPath"

@@ -10,7 +10,8 @@ import binascii
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+UTC = timezone.utc
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
